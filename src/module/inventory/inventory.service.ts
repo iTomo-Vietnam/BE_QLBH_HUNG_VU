@@ -34,7 +34,7 @@ export class InventoryService extends TransactionService {
   ) {
     super();
   }
-  async getStockReport(params: GetStockReportQueryDto): Promise<ApiResponse> {
+  async getStockReport(params: GetStockReportQueryDto, accessibleStoreIds?: string[]): Promise<ApiResponse> {
     const manager = await this.getManager();
     const startAt = params.startAt ? new Date(params.startAt) : new Date(0);
     const endAt = params.endAt ? new Date(params.endAt) : new Date();
@@ -61,7 +61,14 @@ export class InventoryService extends TransactionService {
       ? new Set(params.storeIds)
       : params.storeId
         ? new Set([params.storeId])
-        : undefined;
+        : Array.isArray(accessibleStoreIds)
+          ? new Set(accessibleStoreIds)
+          : undefined;
+    if (requestedStores && Array.isArray(accessibleStoreIds)) {
+      for (const storeId of requestedStores) {
+        if (!accessibleStoreIds.includes(storeId)) requestedStores.delete(storeId);
+      }
+    }
     const data = products.flatMap((product) => {
       const productTransactions = transactions.filter(
         (tx) =>
@@ -135,16 +142,33 @@ export class InventoryService extends TransactionService {
 
   async getTransactionDetails(
     params: GetTransactionDetailsQueryDto,
+    accessibleStoreIds?: string[],
   ): Promise<ApiResponse<InventoryTransactionDetail[]>> {
     const manager = await this.getManager();
     const page = Math.max(1, Number(params.page) || 1);
     const size = Math.max(1, Number(params.size) || 20);
     const startAt = params.startAt ? new Date(params.startAt) : new Date(0);
     const endAt = params.endAt ? new Date(params.endAt) : new Date();
+    const requestedStoreIds = params.storeId
+      ? [params.storeId]
+      : params.storeIds?.length
+        ? params.storeIds
+        : accessibleStoreIds;
+    const filteredStoreIds = Array.isArray(requestedStoreIds) && Array.isArray(accessibleStoreIds)
+      ? requestedStoreIds.filter((storeId) => accessibleStoreIds.includes(storeId))
+      : requestedStoreIds;
+    (params as any).storeId = filteredStoreIds?.length === 1 ? filteredStoreIds[0] : undefined;
+    (params as any).storeIds = filteredStoreIds;
     const rows = await this.transactionRepository.getRepository(manager).find({
       where: {
         productId: params.productId,
-        ...(params.storeId ? { storeId: params.storeId } : {}),
+        ...(params.storeId
+          ? { storeId: params.storeId }
+          : Array.isArray(accessibleStoreIds)
+            ? { storeId: In(accessibleStoreIds) }
+          : Array.isArray(filteredStoreIds)
+            ? { storeId: In(filteredStoreIds) }
+            : {}),
         deletedAt: IsNull(),
       } as any,
       order: { occurredAt: "ASC", createdAt: "ASC", id: "ASC" } as any,

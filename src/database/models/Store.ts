@@ -3,6 +3,7 @@ import { BaseEntity } from "@/shared/base/BaseEntity";
 import { Address } from "@/shared/base/BaseValidator";
 import { StoreUser } from "./store/StoreUser";
 import { Fund } from "./Fund";
+import { Role } from "./store/Role";
 
 export interface StoreSnapshot {
   id: string;
@@ -33,6 +34,9 @@ export class Store extends BaseEntity {
 
   @OneToMany(() => Fund, (fund) => fund.store, { cascade: true })
   funds: Fund[];
+
+  @OneToMany(() => Role, (role) => role.store, { cascade: true })
+  roles: Role[];
 
   @OneToMany(() => StoreUser, (su) => su.store)
   storeUsers: StoreUser[];

@@ -124,3 +124,4 @@ export class PartnerService extends BaseService<Partner> {
     }
   }
 }
+

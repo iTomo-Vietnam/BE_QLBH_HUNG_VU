@@ -18,6 +18,7 @@ export const CreateFundSchema = BaseCreateSchema.extend({
   accountHolderName: z.string().trim().max(100).nullish(),
   branch: z.string().trim().max(50).nullish(),
   storeId: BaseNullableUuidSchema,
+  isPersonal: z.boolean().optional(),
   isActive: z.boolean().optional(),
   initialBalance: z.number().nonnegative().optional(),
 });
@@ -31,6 +32,7 @@ export const UpdateFundSchema = BaseUpdateSchema.extend({
   accountHolderName: z.string().trim().max(100).nullish(),
   branch: z.string().trim().max(50).nullish(),
   storeId: BaseNullableUuidSchema,
+  isPersonal: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 

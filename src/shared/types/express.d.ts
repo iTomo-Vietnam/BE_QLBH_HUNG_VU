@@ -1,5 +1,5 @@
 import type { Module, PermissionStructure } from "../middleware/permission.middleware";
-import type { JwtPayload, UserContext, StoreContext } from "./interfaces";
+import type { JwtPayload, UserContext, StoreContext, StorePermissionContext } from "./interfaces";
 import { PartnerContext } from "./sub-context";
 
 declare module "express-serve-static-core" {
@@ -10,6 +10,9 @@ declare module "express-serve-static-core" {
     userContext?: UserContext | null;
     storeContext?: StoreContext | null;
     permissions?: PermissionStructure;
+    availableStoreIds?: string[];
+    storePermissions?: Record<string, StorePermissionContext>;
+    permissionModule?: Module;
     partnerContext?: PartnerContext;
     importExcel?: Module[];
     exportExcel?: Module[];

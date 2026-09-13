@@ -18,8 +18,17 @@ export class AnalysisController {
     };
   }
 
-  private branch(req: Request, query: AnalysisQueryDto): string {
-    return req.storeContext?.storeId || query.storeId || "all";
+  private branch(req: Request, query: AnalysisQueryDto): string | string[] {
+    const requested = query.storeIds?.length
+      ? query.storeIds
+      : query.storeId
+        ? [query.storeId]
+        : undefined;
+    const accessible = req.availableStoreIds;
+    if (!requested) return accessible ?? "all";
+    return Array.isArray(accessible)
+      ? requested.filter((storeId) => accessible.includes(storeId))
+      : requested;
   }
 
   private respond = async (res: Response, callback: () => Promise<unknown>) => res.json({ success: true, statusCode: 200, message: "OK", data: await callback() });

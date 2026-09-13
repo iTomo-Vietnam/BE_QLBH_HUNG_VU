@@ -10,6 +10,11 @@ const numeric = (value: unknown): number => Number(value || 0);
 @injectable()
 export class AnalysisRepository {
   private scope(alias: string, scope: AnalysisScope, params: unknown[]): string {
+    if (Array.isArray(scope.storeIds)) {
+      if (scope.storeIds.length === 0) return " AND 1 = 0";
+      params.push(scope.storeIds);
+      return ` AND ${alias}."storeId" = ANY($${params.length}::uuid[])`;
+    }
     if (scope.branch === "all") return "";
     params.push(scope.branch);
     return ` AND ${alias}."storeId" = $${params.length}`;
@@ -74,7 +79,7 @@ export class AnalysisRepository {
 
   async getBranches(scope: AnalysisScope, range: AnalysisRange, sortBy: AnalysisSortBy = "revenue"): Promise<AnalysisRepositoryBranch[]> {
     const params: unknown[] = [OrderStatus.COMPLETED, OrderType.SALE, OrderType.SALE_RETURN, scope.timezone, range.startAt, range.endExclusive];
-    const branch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND s.id = $${params.length}`);
+    const branch = this.scope("s", scope, params).replace('s."storeId"', "s.id");
     const rows = await DatabaseConfig.query(
       `SELECT s.id AS "storeId", s.name AS branch,
         COALESCE(SUM(o."grossAmount"), 0)::float AS "goodsTotal",
@@ -104,8 +109,8 @@ export class AnalysisRepository {
     const isCustomerGroup = kind === "customerGroup";
     const entityId = isCustomerGroup ? `COALESCE(p."groupId"::text, 'ungrouped')` : kind === "group" ? `COALESCE(pr."groupId"::text, 'ungrouped')` : `COALESCE(pr.id::text, 'unknown')`;
     const entityName = isCustomerGroup
-      ? `COALESCE(g.name, 'Chưa phân loại')`
-      : kind === "group" ? `COALESCE(g.name, 'Chưa phân loại')` : `COALESCE(pr.name, 'Không xác định')`;
+      ? `COALESCE(g.name, 'ChÆ°a phĂ¢n loáº¡i')`
+      : kind === "group" ? `COALESCE(g.name, 'ChÆ°a phĂ¢n loáº¡i')` : `COALESCE(pr.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh')`;
     const source = isCustomerGroup
       ? `orders o LEFT JOIN partners p ON p.id = o."partnerId" LEFT JOIN attributes g ON g.id = p."groupId"`
       : `order_lines ol INNER JOIN orders o ON o.id = ol."orderId" LEFT JOIN products pr ON pr.id = ol."productId" LEFT JOIN attributes g ON g.id = pr."groupId"`;
@@ -165,12 +170,12 @@ export class AnalysisRepository {
     const params: unknown[] = [IncomeExpenseStatus.COMPLETED, IncomeExpenseType.EXPENSE, scope.timezone, range.startAt, range.endExclusive];
     const branch = this.scope("ie", scope, params);
     return DatabaseConfig.query(
-      `SELECT COALESCE(category.name, 'Chưa phân loại') AS name, SUM(ie.amount)::float AS total, ie."storeId", COALESCE(s.name, 'Toàn hệ thống') AS branch
+      `SELECT COALESCE(category.name, 'ChÆ°a phĂ¢n loáº¡i') AS name, SUM(ie.amount)::float AS total, ie."storeId", COALESCE(s.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS branch
        FROM income_expenses ie
        LEFT JOIN attributes category ON category.id = ie."categoryId"
        LEFT JOIN stores s ON s.id = ie."storeId"
        WHERE ie."deletedAt" IS NULL AND ie.status = $1 AND ie.type = $2 AND ie."partnerId" IS NULL
-         AND COALESCE(category.name, '') <> 'Nộp thuế VAT'
+         AND COALESCE(category.name, '') <> 'Ná»™p thuáº¿ VAT'
          AND timezone($3, ie."occurredAt")::date >= $4::date AND timezone($3, ie."occurredAt")::date < $5::date ${branch}
        GROUP BY category.name, ie."storeId", s.name ORDER BY total DESC`,
       params,
@@ -182,7 +187,7 @@ export class AnalysisRepository {
     const branch = this.scope("ie", scope, params);
     const rows = await DatabaseConfig.query(
       `SELECT
-        COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $3 AND ie."partnerId" IS NULL AND COALESCE(category.name, '') <> 'Nộp thuế VAT'), 0)::float AS "otherCost",
+        COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $3 AND ie."partnerId" IS NULL AND COALESCE(category.name, '') <> 'Ná»™p thuáº¿ VAT'), 0)::float AS "otherCost",
         COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $2 AND ie."partnerId" IS NULL), 0)::float AS "otherIncome"
        FROM income_expenses ie
        LEFT JOIN attributes category ON category.id = ie."categoryId"
@@ -198,8 +203,8 @@ export class AnalysisRepository {
     const params: unknown[] = [IncomeExpenseStatus.COMPLETED, IncomeExpenseType.INCOME, IncomeExpenseType.EXPENSE, scope.timezone, range.startAt, range.endExclusive];
     const branch = this.scope("ie", scope, params);
     const rows = await DatabaseConfig.query(
-      `SELECT COALESCE(s.name, 'Toàn hệ thống') AS branch,
-        COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $3 AND ie."partnerId" IS NULL AND COALESCE(category.name, '') <> 'Nộp thuế VAT'), 0)::float AS "otherCost",
+      `SELECT COALESCE(s.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS branch,
+        COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $3 AND ie."partnerId" IS NULL AND COALESCE(category.name, '') <> 'Ná»™p thuáº¿ VAT'), 0)::float AS "otherCost",
         COALESCE(SUM(ie.amount) FILTER (WHERE ie.type = $2 AND ie."partnerId" IS NULL), 0)::float AS "otherIncome"
        FROM income_expenses ie
        LEFT JOIN attributes category ON category.id = ie."categoryId"
@@ -218,8 +223,8 @@ export class AnalysisRepository {
 
   async getAdjustments(scope: AnalysisScope, range: AnalysisRange): Promise<Record<string, number>> {
     const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
-    const inventoryBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND ia."storeId" = $${params.length}`);
-    const fundBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND fund."storeId" = $${params.length}`);
+    const inventoryBranch = this.scope("ia", scope, params);
+    const fundBranch = this.scope("fund", scope, params);
     const result = await DatabaseConfig.query(
       `SELECT
         (SELECT COALESCE(SUM(ia."totalAdjustmentAmount"), 0) FROM inventory_adjustments ia WHERE ia."deletedAt" IS NULL AND ia."isInitial" IS NOT TRUE AND timezone($1, ia."occurredAt")::date >= $2::date AND timezone($1, ia."occurredAt")::date < $3::date ${inventoryBranch}) AS inventory,
@@ -234,19 +239,19 @@ export class AnalysisRepository {
 
   async getAdjustmentsByBranch(scope: AnalysisScope, range: AnalysisRange): Promise<AnalysisBranchValue[]> {
     const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
-    const inventoryBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND ia."storeId" = $${params.length}`);
-    const fundBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND fund."storeId" = $${params.length}`);
+    const inventoryBranch = this.scope("ia", scope, params);
+    const fundBranch = this.scope("fund", scope, params);
     const rows = await DatabaseConfig.query(
       `SELECT branch, COALESCE(SUM(value), 0)::float AS value
        FROM (
-         SELECT COALESCE(s.name, 'Toàn hệ thống') AS branch, COALESCE(SUM(ia."totalAdjustmentAmount"), 0)::float AS value
+         SELECT COALESCE(s.name, 'Khong xac dinh') AS branch, COALESCE(SUM(ia."totalAdjustmentAmount"), 0)::float AS value
          FROM inventory_adjustments ia
          LEFT JOIN stores s ON s.id = ia."storeId"
          WHERE ia."deletedAt" IS NULL AND ia."isInitial" IS NOT TRUE
            AND timezone($1, ia."occurredAt")::date >= $2::date AND timezone($1, ia."occurredAt")::date < $3::date ${inventoryBranch}
          GROUP BY ia."storeId", s.name
          UNION ALL
-         SELECT COALESCE(s.name, 'Toàn hệ thống') AS branch, COALESCE(SUM(f."deltaAmount"), 0)::float AS value
+         SELECT COALESCE(s.name, 'Khong xac dinh') AS branch, COALESCE(SUM(f."deltaAmount"), 0)::float AS value
          FROM fund_adjustments f
          LEFT JOIN funds fund ON fund.id = f."fundId"
          LEFT JOIN stores s ON s.id = fund."storeId"
@@ -254,12 +259,12 @@ export class AnalysisRepository {
            AND timezone($1, f."occurredAt")::date >= $2::date AND timezone($1, f."occurredAt")::date < $3::date ${fundBranch}
          GROUP BY fund."storeId", s.name
          UNION ALL
-         SELECT 'Toàn hệ thống' AS branch, COALESCE(SUM(v."deltaAmount"), 0)::float AS value
+         SELECT 'Toan he thong' AS branch, COALESCE(SUM(v."deltaAmount"), 0)::float AS value
          FROM vat_adjustments v
          WHERE v."deletedAt" IS NULL AND v."isInitial" IS NOT TRUE
            AND timezone($1, v."occurredAt")::date >= $2::date AND timezone($1, v."occurredAt")::date < $3::date
          UNION ALL
-         SELECT 'Toàn hệ thống' AS branch,
+         SELECT 'Toan he thong' AS branch,
            (COALESCE(SUM(d."deltaAmount") FILTER (WHERE d.side = '${DebtSide.RECEIVABLE}'), 0)
              - COALESCE(SUM(d."deltaAmount") FILTER (WHERE d.side = '${DebtSide.PAYABLE}'), 0))::float AS value
          FROM debt_adjustments d
@@ -293,12 +298,12 @@ export class AnalysisRepository {
 
   async getFreeShippingAndInternalExportByBranch(scope: AnalysisScope, range: AnalysisRange): Promise<AnalysisBranchValue[]> {
     const params: unknown[] = [OrderStatus.COMPLETED, OrderType.SALE, scope.timezone, range.startAt, range.endExclusive];
-    const orderBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND o."storeId" = $${params.length}`);
-    const inventoryBranch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND it."storeId" = $${params.length}`);
+    const orderBranch = this.scope("o", scope, params);
+    const inventoryBranch = this.scope("it", scope, params);
     const rows = await DatabaseConfig.query(
       `SELECT branch, COALESCE(SUM(value), 0)::float AS value
        FROM (
-         SELECT COALESCE(s.name, 'Toàn hệ thống') AS branch,
+         SELECT COALESCE(s.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS branch,
            COALESCE(SUM(CASE WHEN o."isFreeShipping" THEN COALESCE(o."shippingFee", 0) ELSE 0 END), 0)::float AS value
          FROM orders o
          LEFT JOIN stores s ON s.id = o."storeId"
@@ -306,7 +311,7 @@ export class AnalysisRepository {
            AND timezone($3, o."orderAt")::date >= $4::date AND timezone($3, o."orderAt")::date < $5::date ${orderBranch}
          GROUP BY o."storeId", s.name
          UNION ALL
-         SELECT COALESCE(s.name, 'Toàn hệ thống') AS branch, COALESCE(SUM(it.amount), 0)::float AS value
+         SELECT COALESCE(s.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS branch, COALESCE(SUM(it.amount), 0)::float AS value
          FROM inventory_transactions it
          LEFT JOIN stores s ON s.id = it."storeId"
          WHERE it."deletedAt" IS NULL AND it."refType" = 'internal_export' AND it.type = 'out'
@@ -320,10 +325,10 @@ export class AnalysisRepository {
   }
 
   async getProductData(scope: AnalysisScope, range: AnalysisRange): Promise<Record<string, unknown>[]> {
-    const params: unknown[] = [scope.branch === "all" ? null : scope.branch];
+    const params: unknown[] = [Array.isArray(scope.storeIds) ? scope.storeIds : scope.branch === "all" ? null : [scope.branch]];
     return DatabaseConfig.query(
-      `SELECT p.id, p.name, COALESCE(a.name, 'Chưa phân loại') AS group, COALESCE((p."stockMetadata"->'total'->>'quantity')::float, 0) AS quantity, COALESCE((p."stockMetadata"->'total'->>'value')::float, 0) AS value
-       FROM products p LEFT JOIN attributes a ON a.id = p."groupId" WHERE p."deletedAt" IS NULL AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM store_products sp WHERE sp."productId" = p.id AND sp."storeId" = $1::uuid)) ORDER BY value DESC LIMIT 100`,
+      `SELECT p.id, p.name, COALESCE(a.name, 'ChÆ°a phĂ¢n loáº¡i') AS group, COALESCE((p."stockMetadata"->'total'->>'quantity')::float, 0) AS quantity, COALESCE((p."stockMetadata"->'total'->>'value')::float, 0) AS value
+       FROM products p LEFT JOIN attributes a ON a.id = p."groupId" WHERE p."deletedAt" IS NULL AND ($1::uuid[] IS NULL OR EXISTS (SELECT 1 FROM store_products sp WHERE sp."productId" = p.id AND sp."storeId" = ANY($1::uuid[]))) ORDER BY value DESC LIMIT 100`,
       params,
     );
   }
@@ -332,7 +337,7 @@ export class AnalysisRepository {
     const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
     const branch = this.scope("it", scope, params);
     return DatabaseConfig.query(
-      `SELECT it."productId" AS id, COALESCE(p.name, 'Không xác định') AS name,
+      `SELECT it."productId" AS id, COALESCE(p.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS name,
         COALESCE(SUM(CASE WHEN it.type = 'in' THEN ABS(it.quantity) ELSE -ABS(it.quantity) END), 0)::float AS quantity,
         COALESCE(SUM(CASE WHEN it.type = 'in' THEN ABS(it.amount) ELSE -ABS(it.amount) END), 0)::float AS value,
         MAX(it."quantityAfter")::float AS "closingQuantity", MAX(it."inventoryValueAfter")::float AS "closingValue"
@@ -344,12 +349,12 @@ export class AnalysisRepository {
   }
 
   async getProductClassificationData(scope: AnalysisScope): Promise<Record<string, unknown>[]> {
-    const params: unknown[] = [scope.branch === "all" ? null : scope.branch];
+    const params: unknown[] = [Array.isArray(scope.storeIds) ? scope.storeIds : scope.branch === "all" ? null : [scope.branch]];
     return DatabaseConfig.query(
-      `SELECT COALESCE(a.name, 'Chưa phân loại') AS group, COUNT(*)::int AS count,
+      `SELECT COALESCE(a.name, 'ChÆ°a phĂ¢n loáº¡i') AS group, COUNT(*)::int AS count,
         COALESCE(SUM(CASE WHEN $1::uuid IS NULL THEN (p."stockMetadata"->'total'->>'value')::float ELSE (p."stockMetadata"->'byStore'->($1::text)->>'value')::float END), 0)::float AS value
        FROM products p LEFT JOIN attributes a ON a.id = p."groupId"
-       WHERE p."deletedAt" IS NULL AND ($1::uuid IS NULL OR EXISTS (SELECT 1 FROM store_products sp WHERE sp."productId" = p.id AND sp."storeId" = $1::uuid))
+       WHERE p."deletedAt" IS NULL AND ($1::uuid[] IS NULL OR EXISTS (SELECT 1 FROM store_products sp WHERE sp."productId" = p.id AND sp."storeId" = ANY($1::uuid[])))
        GROUP BY a.name ORDER BY value DESC`,
       params,
     );
@@ -370,15 +375,17 @@ export class AnalysisRepository {
 
   async getCustomerData(scope: AnalysisScope): Promise<Record<string, unknown>[]> {
     const params: unknown[] = [];
-    const branch = scope.branch === "all" ? "" : (params.push(scope.branch), ` AND EXISTS (SELECT 1 FROM orders o WHERE o."partnerId" = p.id AND o."storeId" = $1)`);
-    return DatabaseConfig.query(`SELECT COALESCE(g.name, 'Chưa phân loại') AS group, COUNT(*)::int AS count FROM partners p LEFT JOIN attributes g ON g.id = p."groupId" WHERE p."deletedAt" IS NULL AND p.type = 'customer' ${branch} GROUP BY g.name ORDER BY count DESC`, params);
+    const branch = Array.isArray(scope.storeIds)
+      ? scope.storeIds.length === 0
+        ? " AND 1 = 0"
+        : (params.push(scope.storeIds), ` AND EXISTS (SELECT 1 FROM orders o WHERE o."partnerId" = p.id AND o."storeId" = ANY($${params.length}::uuid[]))`)
+      : scope.branch === "all" ? "" : (params.push([scope.branch]), ` AND EXISTS (SELECT 1 FROM orders o WHERE o."partnerId" = p.id AND o."storeId" = ANY($1::uuid[]))`);
+    return DatabaseConfig.query(`SELECT COALESCE(g.name, 'ChÆ°a phĂ¢n loáº¡i') AS group, COUNT(*)::int AS count FROM partners p LEFT JOIN attributes g ON g.id = p."groupId" WHERE p."deletedAt" IS NULL AND p.type = 'customer' ${branch} GROUP BY g.name ORDER BY count DESC`, params);
   }
 
   async getReceivable(scope: AnalysisScope, range: AnalysisRange): Promise<Record<string, unknown>[]> {
     const params: unknown[] = [scope.timezone, range.endExclusive];
-    if (scope.branch !== "all") params.push(scope.branch);
-    const scopedBranch = scope.branch === "all" ? "" : ` AND EXISTS (SELECT 1 FROM orders o WHERE o."partnerId" = d."partnerId" AND o."storeId" = $3)`;
-    return DatabaseConfig.query(`SELECT d."partnerId" AS id, COALESCE(p.name, 'Không xác định') AS name, COALESCE(SUM(CASE WHEN d.type = 'in' THEN d.amount ELSE -d.amount END), 0)::float AS amount FROM debt_transactions d LEFT JOIN partners p ON p.id = d."partnerId" WHERE d."deletedAt" IS NULL AND d.side = '${DebtSide.RECEIVABLE}' AND timezone($1, d."occurredAt")::date < $2::date ${scopedBranch} GROUP BY d."partnerId", p.name ORDER BY amount DESC LIMIT 100`, params);
+    return DatabaseConfig.query(`SELECT d."partnerId" AS id, COALESCE(p.name, 'KhĂ´ng xĂ¡c Ä‘á»‹nh') AS name, COALESCE(SUM(CASE WHEN d.type = 'in' THEN d.amount ELSE -d.amount END), 0)::float AS amount FROM debt_transactions d LEFT JOIN partners p ON p.id = d."partnerId" WHERE d."deletedAt" IS NULL AND d.side = '${DebtSide.RECEIVABLE}' AND timezone($1, d."occurredAt")::date < $2::date GROUP BY d."partnerId", p.name ORDER BY amount DESC LIMIT 100`, params);
   }
 }
 
@@ -404,3 +411,5 @@ export interface AnalysisBranchValue {
   branch: string;
   value: number;
 }
+
+

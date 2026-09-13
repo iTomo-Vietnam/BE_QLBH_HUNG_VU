@@ -47,3 +47,4 @@ export class VatAdjustmentService extends BaseService<VatAdjustment> {
     data.deltaAmount = Number(countedAmount) - Number(expectedAmount);
   }
 }
+

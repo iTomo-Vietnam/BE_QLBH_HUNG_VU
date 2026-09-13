@@ -1,5 +1,5 @@
 import { injectable } from "inversify";
-import { Role } from "@/database/models/Role";
+import { Role } from "@/database/models/store/Role";
 import {
   BaseRepository,
   IFindPaginationOptions,
@@ -25,7 +25,6 @@ export class RoleRepository extends BaseRepository<Role> {
   ): Promise<void> {
     const alias = qb.alias;
 
-    // Đếm số user cho mỗi role
-    qb.loadRelationCountAndMap(`${alias}.userCount`, `${alias}.users`);
+    qb.loadRelationCountAndMap(`${alias}.userCount`, `${alias}.storeUsers`);
   }
 }

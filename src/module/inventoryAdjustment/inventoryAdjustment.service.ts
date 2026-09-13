@@ -2,6 +2,7 @@ import { inject, injectable } from "inversify";
 import { DeepPartial, EntityManager } from "typeorm";
 import { BaseService } from "@/shared/base/BaseService";
 import { RequestContext } from "@/shared/types/interfaces";
+import { BadRequestError } from "@/shared/types/errors";
 import { generateCode } from "@/shared/utils/code.utils";
 import { withTransaction } from "@/shared/base/TransactionManager";
 import { InventoryAdjustment } from "@/database/models/store/InventoryAdjustment";
@@ -108,9 +109,9 @@ export class InventoryAdjustmentService extends BaseService<InventoryAdjustment>
   }
 
   async validateBeforeCreate(data: DeepPartial<InventoryAdjustment>, manager: EntityManager, req?: RequestContext): Promise<void> {
-    if (req?.storeContext?.storeId && data.storeId && data.storeId !== req.storeContext.storeId) throw new Error("store.invalid");
-    data.storeId = req?.storeContext?.storeId || data.storeId;
-    if (!data.storeId) throw new Error("store.required");
+    if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+    if (data.storeId && data.storeId !== req.storeContext.storeId) throw new BadRequestError("Dữ liệu phải thuộc cửa hàng đang thao tác");
+    data.storeId = req.storeContext.storeId;
     if (!data.code) data.code = await generateCode("inventoryadjustment", data.storeId);
     if (!data.occurredAt) data.occurredAt = new Date();
     if (!Array.isArray((data as any).lines) || !(data as any).lines.length) {
@@ -132,7 +133,9 @@ export class InventoryAdjustmentService extends BaseService<InventoryAdjustment>
       const payload = { ...(data as any) }; const lines = payload.lines; delete payload.lines;
       const current = await this.repository.getRepository(em).findOne({ where: { id }, relations: { lines: true } });
       if (!current) return null;
-      if (payload.storeId && payload.storeId !== current.storeId) throw new Error("store.change_not_allowed");
+      if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+      if (current.storeId !== req.storeContext.storeId) throw new BadRequestError("Không thể cập nhật dữ liệu của cửa hàng khác");
+      if (payload.storeId && payload.storeId !== current.storeId) throw new BadRequestError("Không thể chuyển dữ liệu sang cửa hàng khác");
       const storeId = (payload.storeId || current.storeId) as string;
       const occurredAt = new Date(payload.occurredAt || current.occurredAt);
       await this.prepareLines(lines, em);

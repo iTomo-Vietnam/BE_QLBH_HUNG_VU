@@ -15,7 +15,7 @@ export class FundRepository extends BaseRepository<Fund> {
   async getSnapshot(id: string, manager?: EntityManager): Promise<FundSnapshot | null> {
     const fund = await this.getRepository(manager).findOne({ where: { id, deletedAt: null } as any });
     return fund
-      ? { id: fund.id, code: fund.code, name: fund.name, type: fund.type, storeId: fund.storeId }
+      ? { id: fund.id, code: fund.code, name: fund.name, type: fund.type, storeId: fund.storeId, isPersonal: fund.isPersonal }
       : null;
   }
 

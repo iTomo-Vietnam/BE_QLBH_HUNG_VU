@@ -21,3 +21,4 @@ export const DebtAdjustmentSelectFull: FindOptionsSelect<DebtAdjustment> = {
 } as any;
 export const DebtAdjustmentRelationsList: FindOptionsRelations<DebtAdjustment> = {};
 export const DebtAdjustmentRelations: FindOptionsRelations<DebtAdjustment> = { partner: true };
+

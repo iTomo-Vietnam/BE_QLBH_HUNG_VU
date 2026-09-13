@@ -13,6 +13,15 @@ import {
 const getTimezone = (req: Request, queryTimezone?: string): string | undefined =>
   queryTimezone || (req.headers["x-timezone"] as string | undefined);
 
+const getStoreIds = (req: Request, requested?: string[]): string[] | undefined => {
+  if (requested) {
+    return Array.isArray(req.availableStoreIds)
+      ? requested.filter((storeId) => req.availableStoreIds!.includes(storeId))
+      : requested;
+  }
+  return req.availableStoreIds;
+};
+
 @injectable()
 export class DashboardController {
   constructor(
@@ -23,8 +32,9 @@ export class DashboardController {
   getMetrics = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as DashboardMetricsQueryDto;
     const data = await this.service.getMetrics(
-      req.storeContext?.storeId,
+      undefined,
       getTimezone(req, query.timezone),
+      getStoreIds(req, query.storeIds),
     );
     res.json({ success: true, statusCode: 200, message: "OK", data });
   });
@@ -32,11 +42,12 @@ export class DashboardController {
   getRevenue = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as DashboardRevenueQueryDto;
     const data = await this.service.getRevenue(
-      req.storeContext?.storeId,
+      undefined,
       getTimezone(req, query.timezone),
       query.timeView,
       query.typeView,
       query.typeCal,
+      getStoreIds(req, query.storeIds),
     );
     res.json({ success: true, statusCode: 200, message: "OK", data });
   });
@@ -44,10 +55,11 @@ export class DashboardController {
   getTopProducts = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as DashboardTopProductQueryDto;
     const data = await this.service.getTopProducts(
-      req.storeContext?.storeId,
+      undefined,
       getTimezone(req, query.timezone),
       query.timeView,
       query.typeCal,
+      getStoreIds(req, query.storeIds),
     );
     res.json({ success: true, statusCode: 200, message: "OK", data });
   });
@@ -55,9 +67,10 @@ export class DashboardController {
   getTopCustomers = asyncHandler(async (req: Request, res: Response) => {
     const query = req.query as unknown as DashboardTopCustomerQueryDto;
     const data = await this.service.getTopCustomers(
-      req.storeContext?.storeId,
+      undefined,
       getTimezone(req, query.timezone),
       query.timeView,
+      getStoreIds(req, query.storeIds),
     );
     res.json({ success: true, statusCode: 200, message: "OK", data });
   });

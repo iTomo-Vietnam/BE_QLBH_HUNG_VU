@@ -83,9 +83,9 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
     id: string,
     data: DeepPartial<IncomeExpense>,
     manager: EntityManager,
+    req?: RequestContext,
   ): Promise<void> {
-    const current = await this.repository.findById(id, manager);
-    if (!current) throw new Error("incomeExpense.not_found");
+    const current = await this.getById(id, req, manager);
 
     if (data.orderId !== undefined && data.orderId !== current.orderId) {
       throw new Error("incomeExpense.order_locked");

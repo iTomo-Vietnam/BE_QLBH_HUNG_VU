@@ -75,3 +75,4 @@ export class DebtTransactionRepository extends BaseRepository<DebtTransaction> {
     return Number(row?.amount || 0);
   }
 }
+

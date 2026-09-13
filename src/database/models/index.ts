@@ -19,7 +19,7 @@ import { Partner, PartnerSnapshot, PartnerType } from "./Partner";
 import { PartnerContact } from "./PartnerContact";
 import { Product, ProductSnapshot, StockMetadata } from "./Product";
 import { ProductExtraUnit } from "./ProductExtraUnit";
-import { Role, RoleType } from "./Role";
+import { Role } from "./store/Role";
 import { Store, StoreSnapshot } from "./Store";
 import { StoreTransfer } from "./StoreTransfer";
 import { StoreTransferLine } from "./StoreTransferLine";
@@ -130,7 +130,6 @@ export {
   StoreProduct,
   StoreProductLocation,
   Role,
-  RoleType,
   Store,
   StoreSnapshot,
   StoreTransfer,

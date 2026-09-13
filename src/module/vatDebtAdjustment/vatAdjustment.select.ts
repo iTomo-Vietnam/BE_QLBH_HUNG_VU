@@ -9,3 +9,4 @@ export const VatAdjustmentSelectList: FindOptionsSelect<VatAdjustment> = {
 export const VatAdjustmentSelectFull: FindOptionsSelect<VatAdjustment> = VatAdjustmentSelectList;
 export const VatAdjustmentRelationsList: FindOptionsRelations<VatAdjustment> = {};
 export const VatAdjustmentRelations: FindOptionsRelations<VatAdjustment> = {};
+

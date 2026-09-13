@@ -28,7 +28,7 @@ export class InventoryController {
       // Validate query parameters
       const validatedQuery = req.query as unknown as GetStockReportQueryDto;
 
-      const result = await this.inventoryService.getStockReport(validatedQuery);
+      const result = await this.inventoryService.getStockReport(validatedQuery, req.availableStoreIds);
 
       res.json(result);
     } catch (error: any) {
@@ -53,7 +53,7 @@ export class InventoryController {
         req.query as unknown as GetTransactionDetailsQueryDto;
 
       const result =
-        await this.inventoryService.getTransactionDetails(validatedQuery);
+        await this.inventoryService.getTransactionDetails(validatedQuery, req.availableStoreIds);
 
       res.json(result);
     } catch (error: any) {

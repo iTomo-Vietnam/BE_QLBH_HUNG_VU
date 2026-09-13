@@ -10,6 +10,7 @@ import {
 } from "./store.validator";
 import { StoreController } from "./store.controller";
 import { STORE_TYPES } from "./store.types";
+import { permissionMiddleware } from "@/shared/middleware/permission.middleware";
 
 @injectable()
 export class StoreRouter {
@@ -31,6 +32,7 @@ export class StoreRouter {
     this.router.get(
       "/",
       zodValidate(StoreQuerySchema, "query"),
+      permissionMiddleware("store", "read"),
       this.controller.getAllWithPagination,
     );
 
@@ -38,6 +40,7 @@ export class StoreRouter {
     this.router.post(
       "/",
       zodValidate(CreateStoreSchema, "body"),
+      permissionMiddleware("store", "create"),
       this.controller.create,
     );
 
@@ -45,6 +48,7 @@ export class StoreRouter {
     this.router.get(
       "/:id",
       zodValidate(StoreParamsSchema, "params"),
+      permissionMiddleware("store", "read"),
       this.controller.getById,
     );
 
@@ -53,6 +57,7 @@ export class StoreRouter {
       "/:id",
       zodValidate(StoreParamsSchema, "params"),
       zodValidate(UpdateStoreSchema, "body"),
+      permissionMiddleware("store", "update"),
       this.controller.update,
     );
 
@@ -60,6 +65,7 @@ export class StoreRouter {
     this.router.delete(
       "/:id",
       zodValidate(StoreParamsSchema, "params"),
+      permissionMiddleware("store", "delete"),
       this.controller.delete,
     );
   }

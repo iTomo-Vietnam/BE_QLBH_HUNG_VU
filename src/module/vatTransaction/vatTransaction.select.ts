@@ -9,3 +9,4 @@ export const VatTransactionSelectList: FindOptionsSelect<VatTransaction> = {
 export const VatTransactionSelectFull: FindOptionsSelect<VatTransaction> = VatTransactionSelectList;
 export const VatTransactionRelationsList: FindOptionsRelations<VatTransaction> = {};
 export const VatTransactionRelations: FindOptionsRelations<VatTransaction> = {};
+

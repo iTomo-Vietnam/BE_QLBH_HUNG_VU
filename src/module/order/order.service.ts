@@ -2,7 +2,7 @@ import { inject, injectable } from "inversify";
 import { DeepPartial, EntityManager } from "typeorm";
 import { withTransaction } from "@/shared/base/TransactionManager";
 import { BaseService } from "@/shared/base/BaseService";
-import { RequestContext } from "@/shared/types/interfaces";
+import { ActionValue, RequestContext } from "@/shared/types/interfaces";
 import { generateCode } from "@/shared/utils/code.utils";
 import {
   IncomeExpense,
@@ -34,6 +34,7 @@ import { DebtRecalculateService } from "@/module/debt/debt.recalculate.service";
 import { FUND_TYPES } from "@/module/fund/fund.types";
 import { FundRepository } from "@/module/fund/fund.repository";
 import type { OrderHistoryQueryDto } from "./order.validator";
+import { BadRequestError } from "@/shared/types/errors";
 
 const calculateRateAmount = (
   baseAmount: number,
@@ -105,7 +106,11 @@ export class OrderService extends BaseService<Order> {
   }
 
   async getAllTypesHistory(query: OrderHistoryQueryDto) {
-    const { shipperId, type: _type, ...options } = query as OrderHistoryQueryDto & {
+    const {
+      shipperId,
+      type: _type,
+      ...options
+    } = query as OrderHistoryQueryDto & {
       type?: unknown;
     };
 
@@ -116,20 +121,76 @@ export class OrderService extends BaseService<Order> {
   }
 
   protected async attachActions(
-    entity: Order & { _actions?: any },
+    entity: Order,
+    req?: RequestContext,
   ): Promise<void> {
-    const isDraft = entity.status === OrderStatus.DRAFT;
-    const isCanceled = entity.status === OrderStatus.CANCELED;
-    entity._actions = {
-      ...(this.getDefaultAction() as any),
-      update: {
-        can: !isCanceled,
-      },
-      delete: { can: isDraft },
-      cancel: { can: !isCanceled },
-      complete: { can: isDraft },
-      export: { can: true },
-    };
+    const actions = this.getDefaultAction();
+    actions.update = await this.canUpdate(entity, req);
+    actions.delete = await this.canDelete(entity, req);
+    actions.cancel = await this.canCancel(entity, req);
+    actions.complete = await this.canComplete(entity, req);
+
+    entity._actions = actions;
+  }
+
+  private async canUpdate(
+    entity: Order,
+    req?: RequestContext,
+  ): Promise<ActionValue> {
+    const storeId = req?.storeContext?.storeId;
+    if (!storeId || entity.storeId !== storeId)
+      return {
+        can: false,
+        reason: "Không thể chỉnh sửa phiếu của cửa hàng khác",
+      };
+    if (entity.status === OrderStatus.CANCELED)
+      return { can: false, reason: "Không thể chỉnh sửa phiếu đã hủy" };
+    return { can: true };
+  }
+
+  private async canDelete(
+    entity: Order,
+    req?: RequestContext,
+  ): Promise<ActionValue> {
+    const storeId = req?.storeContext?.storeId;
+    if (!storeId || entity.storeId !== storeId)
+      return {
+        can: false,
+        reason: "Không thể xóa phiếu của cửa hàng khác",
+      };
+    if (entity.status !== OrderStatus.DRAFT)
+      return { can: false, reason: "Chỉ có thể xóa phiếu nháp" };
+    return { can: true };
+  }
+
+  private async canCancel(
+    entity: Order,
+    req?: RequestContext,
+  ): Promise<ActionValue> {
+    const storeId = req?.storeContext?.storeId;
+    if (!storeId || entity.storeId !== storeId)
+      return {
+        can: false,
+        reason: "Không thể hủy phiếu của cửa hàng khác",
+      };
+    if (entity.status === OrderStatus.CANCELED)
+      return { can: false, reason: "Phiếu đã được hủy" };
+    return { can: true };
+  }
+
+  private async canComplete(
+    entity: Order,
+    req?: RequestContext,
+  ): Promise<ActionValue> {
+    const storeId = req?.storeContext?.storeId;
+    if (!storeId || entity.storeId !== storeId)
+      return {
+        can: false,
+        reason: "Không thể hoàn tất phiếu của cửa hàng khác",
+      };
+    if (entity.status === OrderStatus.COMPLETED)
+      return { can: false, reason: "Phiếu đã được hoàn tất" };
+    return { can: true };
   }
 
   private isPurchaseOrderType(type?: OrderType): boolean {
@@ -572,13 +633,10 @@ export class OrderService extends BaseService<Order> {
     manager: EntityManager,
     req?: RequestContext,
   ): Promise<void> {
-    const current = await this.repository.findById(id, manager);
-    if (!current) throw new Error("order.not_found");
-    if (
-      req?.storeContext?.storeId &&
-      current.storeId !== req.storeContext.storeId
-    )
-      throw new Error("store.scope.mismatch");
+    const current = await this.getById(id, req, manager);
+    const canUpdate = await this.canUpdate(current, req);
+    if (!canUpdate.can) throw new BadRequestError(canUpdate.reason);
+
     const targetStatus = (data.status || current.status) as OrderStatus;
     if (
       targetStatus === OrderStatus.COMPLETED &&

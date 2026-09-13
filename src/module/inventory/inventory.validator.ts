@@ -19,6 +19,7 @@ export const GetTransactionDetailsQuerySchema = z.object({
   endAt: date,
   productId: z.uuid(),
   storeId: z.uuid().optional(),
+  storeIds: ids,
   refType: z.enum(InventoryRefType).optional(),
   page: z.coerce.number().int().positive().optional(),
   size: z.coerce.number().int().positive().optional(),

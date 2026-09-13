@@ -77,7 +77,7 @@ export class PartnerExcelTemplate {
     guide.addRow([`Sheet ${config.mainSheetName}: mỗi dòng là một ${entityType === ExcelEntityType.CUSTOMER ? "khách hàng" : "nhà cung cấp"}. Mã có thể để trống để hệ thống tự sinh; tên là bắt buộc.`]);
     guide.addRow(["Địa chỉ nhập trong một cột duy nhất theo dạng: Số nhà, Phường/Xã, Tỉnh/Thành phố. Hệ thống sẽ tự phân tích thành Address."]);
     guide.addRow([`Sheet Người liên hệ, Ngân hàng: dùng mã trong cột đầu tiên để liên kết về sheet ${config.mainSheetName}. Có thể có nhiều dòng cho cùng một đối tác.`]);
-    guide.addRow([`${config.debtSide === DebtSide.RECEIVABLE ? "Nợ phải thu" : "Nợ phải trả"} hiện tại là số dư theo toàn hệ thống, không theo cửa hàng. Khi import, hệ thống tạo phiếu điều chỉnh để đưa số dư hiện tại về đúng giá trị trong file.`]);
+    guide.addRow([`${config.debtSide === DebtSide.RECEIVABLE ? "Nợ phải thu" : "Nợ phải trả"} hiện tại được tính theo cửa hàng đang thao tác. Khi import, hệ thống tạo phiếu điều chỉnh để đưa số dư hiện tại về đúng giá trị trong file.`]);
     guide.addRow(["Để cập nhật đối tác, ưu tiên giữ nguyên Mã đối tác. Nếu bỏ trống mã, hệ thống dò theo số điện thoại hoặc email."]);
     guide.getColumn(1).width = 120;
     guide.getRow(1).font = { bold: true, size: 14 };

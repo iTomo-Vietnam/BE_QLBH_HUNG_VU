@@ -106,12 +106,39 @@ export const checkPermission = (
   module: Module,
   permission: Permission,
 ): boolean => {
-  const permissions = ((req as any).permissions || {}) as PermissionStructure;
-  return (
-    permissions[module]?.includes(permission) ||
-    (permission === "read" && checkPermissionFallback(permissions, module)) ||
-    false
-  );
+  const storeId = req.storeContext?.storeId;
+  const permissions = storeId
+    ? req.storePermissions?.[storeId]?.permissions || {}
+    : ((req as any).permissions || {}) as PermissionStructure;
+  const hasPermission = (value: PermissionStructure) =>
+    Boolean(
+      value[module]?.includes(permission) ||
+        (permission === "read" && checkPermissionFallback(value, module)),
+    );
+
+  if (hasPermission(permissions)) return true;
+  if (!storeId && req.storePermissions) {
+    return Object.values(req.storePermissions).some((scope) =>
+      hasPermission(scope.permissions),
+    );
+  }
+  return false;
+};
+
+export const getAvailableStoreIds = (
+  req: Request,
+  module: Module,
+  permission: Permission = "read",
+): string[] => {
+  if (AuthUtils.isAdmin((req as any).user)) return [];
+  return Object.values(req.storePermissions || {})
+    .filter((scope) =>
+      Boolean(
+        scope.permissions[module]?.includes(permission) ||
+          (permission === "read" && checkPermissionFallback(scope.permissions, module)),
+      ),
+    )
+    .map((scope) => scope.storeId);
 };
 
 export const permissionMiddleware =
@@ -120,11 +147,20 @@ export const permissionMiddleware =
     try {
       const jwtUser = (req as any).user as JwtPayload | undefined;
       if (!jwtUser?.userId)
-        throw new UnauthorizedError("Authentication required");
-      if (AuthUtils.isAdmin(jwtUser)) return next();
+        throw new UnauthorizedError("Yêu cầu đăng nhập");
+      const isAdmin = AuthUtils.isAdmin(jwtUser);
       const resolved = typeof module === "function" ? module(req) : module;
-      if (!checkPermission(req, resolved, permission))
-        throw new ForbiddenError("Insufficient permissions");
+      const allowed = isAdmin
+        ? true
+        : permission === "read"
+          ? getAvailableStoreIds(req, resolved, permission).length > 0
+          : checkPermission(req, resolved, permission);
+      if (!allowed)
+        throw new ForbiddenError("Bạn không có quyền thực hiện thao tác này");
+      req.permissionModule = resolved;
+      if (permission === "read" && !isAdmin) {
+        req.availableStoreIds = getAvailableStoreIds(req, resolved, permission);
+      }
       next();
     } catch (error) {
       next(error);

@@ -64,3 +64,4 @@ export class VatTransactionService extends BaseService<VatTransaction> {
     throw new Error("vatTransaction.immutable");
   }
 }
+

@@ -10,8 +10,13 @@ const defaultSort: AnalysisSortBy = "revenue";
 export class AnalysisService {
   constructor(@inject(ANALYSIS_TYPES.Repository) private repository: AnalysisRepository) {}
 
-  private scope(branch: string, query: AnalysisQuery): AnalysisScope {
-    return { branch: branch === "all" ? "all" : branch, timezone: normalizeTimezone(query.timezone) };
+  private scope(branch: string | string[], query: AnalysisQuery): AnalysisScope {
+    const storeIds = Array.isArray(branch) ? branch : branch === "all" ? undefined : [branch];
+    return {
+      branch: storeIds?.length === 1 ? storeIds[0] : "all",
+      storeIds,
+      timezone: normalizeTimezone(query.timezone),
+    };
   }
 
   private metric(value: number, previous: number, days: number): AnalysisMetric {
@@ -55,7 +60,7 @@ export class AnalysisService {
     };
   }
 
-  async getSaleOverviewMetrics(branch: string, query: AnalysisQuery) {
+  async getSaleOverviewMetrics(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const previous = resolvePreviousRange(range);
     const scope = this.scope(branch, query);
@@ -66,7 +71,7 @@ export class AnalysisService {
     return { range, metrics: this.overviewMetrics(current, previousData, range.days) };
   }
 
-  async getSaleBusinessIndicator(branch: string, query: AnalysisQuery) {
+  async getSaleBusinessIndicator(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const scope = this.scope(branch, query);
     const [daily, branches] = await Promise.all([
@@ -77,7 +82,7 @@ export class AnalysisService {
   }
 
   async getSaleOverviewTop(
-    branch: string,
+    branch: string | string[],
     query: AnalysisQuery,
     kind: "product" | "group" | "customerGroup",
   ) {
@@ -88,7 +93,7 @@ export class AnalysisService {
     return { range, sortBy, rows };
   }
 
-  async getSaleOverview(branch: string, query: AnalysisQuery): Promise<SaleOverviewData> {
+  async getSaleOverview(branch: string | string[], query: AnalysisQuery): Promise<SaleOverviewData> {
     const [metrics, indicator, productGroups, products, customerGroups] = await Promise.all([
       this.getSaleOverviewMetrics(branch, query),
       this.getSaleBusinessIndicator(branch, query),
@@ -108,7 +113,7 @@ export class AnalysisService {
     };
   }
 
-  private async getProfitParts(branch: string, query: AnalysisQuery) {
+  private async getProfitParts(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const previous = resolvePreviousRange(range);
     const scope = this.scope(branch, query);
@@ -156,12 +161,12 @@ export class AnalysisService {
     };
   }
 
-  async getSaleProfitMetrics(branch: string, query: AnalysisQuery) {
+  async getSaleProfitMetrics(branch: string | string[], query: AnalysisQuery) {
     const parts = await this.getProfitParts(branch, query);
     return { range: parts.range, metrics: this.profitMetricData(parts) };
   }
 
-  async getSaleProfitCostStructure(branch: string, query: AnalysisQuery) {
+  async getSaleProfitCostStructure(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const scope = this.scope(branch, query);
     const [costs, summary] = await Promise.all([
@@ -183,7 +188,7 @@ export class AnalysisService {
     return { range, costStructure };
   }
 
-  async getSaleProfitEffectiveness(branch: string, query: AnalysisQuery) {
+  async getSaleProfitEffectiveness(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const scope = this.scope(branch, query);
     const [summary, componentsByBranch, adjustmentsByBranch, shippingByBranch, branches, costs] = await Promise.all([
@@ -253,7 +258,7 @@ export class AnalysisService {
     return { range, effectiveness };
   }
 
-  async getSaleProfit(branch: string, query: AnalysisQuery): Promise<SaleProfitData> {
+  async getSaleProfit(branch: string | string[], query: AnalysisQuery): Promise<SaleProfitData> {
     const [metrics, costStructure, effectiveness] = await Promise.all([
       this.getSaleProfitMetrics(branch, query),
       this.getSaleProfitCostStructure(branch, query),
@@ -262,10 +267,10 @@ export class AnalysisService {
     return { range: metrics.range, metrics: metrics.metrics, costStructure: costStructure.costStructure, effectiveness: effectiveness.effectiveness };
   }
 
-  async getProductOverview(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); const previous = resolvePreviousRange(range); return { range, metrics: {}, rows: await this.repository.getTop(this.scope(branch, query), range, previous, query.sortBy || defaultSort, "product") }; }
-  async getProductInventory(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getInventoryData(this.scope(branch, query), range) }; }
-  async getProductClassification(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getProductClassificationData(this.scope(branch, query)) }; }
-  async getCustomerOverview(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getCustomerOverviewData(this.scope(branch, query), range) }; }
-  async getCustomerClassification(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getCustomerData(this.scope(branch, query)) }; }
-  async getReceivable(branch: string, query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getReceivable(this.scope(branch, query), range) }; }
+  async getProductOverview(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); const previous = resolvePreviousRange(range); return { range, metrics: {}, rows: await this.repository.getTop(this.scope(branch, query), range, previous, query.sortBy || defaultSort, "product") }; }
+  async getProductInventory(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getInventoryData(this.scope(branch, query), range) }; }
+  async getProductClassification(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getProductClassificationData(this.scope(branch, query)) }; }
+  async getCustomerOverview(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getCustomerOverviewData(this.scope(branch, query), range) }; }
+  async getCustomerClassification(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getCustomerData(this.scope(branch, query)) }; }
+  async getReceivable(branch: string | string[], query: AnalysisQuery) { const range = resolveAnalysisRange(query.period); return { range, metrics: {}, rows: await this.repository.getReceivable(this.scope(branch, query), range) }; }
 }

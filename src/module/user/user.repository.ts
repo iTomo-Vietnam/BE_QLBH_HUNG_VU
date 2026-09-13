@@ -27,7 +27,7 @@ export class UserRepository extends BaseRepository<User> {
     options: IFindPaginationOptions<User>,
   ): Promise<void> {
     const alias = qb.alias;
-    const { storeId, storeIds, roleId, roleIds } =
+    const { storeId, storeIds, roleIds } =
       (options?.moreQuery as UserQueryDto) || {};
 
     qb.andWhere(`(${alias}.username NOT ILIKE :admin)`, { admin: "%admin%" });
@@ -47,10 +47,8 @@ export class UserRepository extends BaseRepository<User> {
       );
     }
 
-    if (roleId) {
-      qb.andWhere(`${alias}.roleId = :roleId`, { roleId });
-    } else if (this.checkArrayFilter(roleIds)) {
-      qb.andWhere(`${alias}.roleId IN (:...roleIds)`, { roleIds });
+    if (this.checkArrayFilter(roleIds)) {
+      qb.andWhere("su.roleId IN (:...roleIds)", { roleIds });
     }
   }
 

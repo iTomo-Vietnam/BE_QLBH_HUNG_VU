@@ -11,12 +11,10 @@ import {
 import { EXCEL_MODULES } from "@/shared/types/excel";
 import { BaseService } from "@/shared/base/BaseService";
 import { User } from "@/database/models/User";
-import { RoleType } from "@/database/models/Role";
+import { Store } from "@/database/models/Store";
 import { AuthRepository } from "./auth.repository";
 import { AUTH_TYPES } from "./auth.types";
 import { LoginDto } from "./auth.validator";
-import { STORE_TYPES } from "../store/store.types";
-import { StoreRepository } from "../store/store.repository";
 
 @injectable()
 export class AuthService extends BaseService<User> {
@@ -24,8 +22,6 @@ export class AuthService extends BaseService<User> {
 
   constructor(
     @inject(AUTH_TYPES.AuthRepository) authRepository: AuthRepository,
-    @inject(STORE_TYPES.StoreRepository)
-    private storeRepository: StoreRepository,
   ) {
     super();
     this.repository = authRepository;
@@ -55,51 +51,48 @@ export class AuthService extends BaseService<User> {
   async getCurrent(userId: string, storeId?: string) {
     const user = await this.repository.findOne({
       where: { id: userId, deletedAt: IsNull() } as any,
-      relations: { role: true, storeUsers: { store: true } },
+      relations: { storeUsers: { store: true, role: true } },
     });
     if (!user) throw new NotFoundError("Người dùng không tồn tại", "userId");
     const isAdmin = AuthUtils.isAdmin(user);
-    const hasSystemScope = isAdmin || user.role?.type === RoleType.SYSTEM;
     const memberships = user.storeUsers || [];
-    const stores = hasSystemScope
-      ? await this.storeRepository.find({
+    const stores = isAdmin
+      ? await this.repository.getRepository().manager.getRepository(Store).find({
           where: { deletedAt: IsNull() } as any,
-        })
+        } as any)
       : memberships.map((membership) => membership.store).filter(Boolean);
-    if (!hasSystemScope && !stores.length)
+    if (!isAdmin && !stores.length)
       throw new BadRequestError(
         "Tài khoản chưa được cấp quyền cho cửa hàng nào",
       );
     if (
       storeId &&
-      !hasSystemScope &&
+      !isAdmin &&
       !memberships.some((membership) => membership.storeId === storeId)
     )
       throw new BadRequestError(
         "Tài khoản không có quyền truy cập cửa hàng này",
       );
-    const currentStore = hasSystemScope
-      ? storeId
-        ? stores.find((store) => store.id === storeId) || null
-        : null
-      : stores.find((store) => store.id === storeId) || stores[0];
+    const currentStore = stores.find((store) => store.id === storeId) || stores[0] || null;
+    const currentRole = memberships.find(
+      (membership) => membership.storeId === currentStore?.id,
+    )?.role;
     const permissions: PermissionStructure = isAdmin
       ? createPermissions()
-      : user.role?.permissions || {};
+      : currentRole?.permissions || {};
     return {
       ...user,
       password: undefined,
       permissions,
       allStores: stores,
       currentStore,
-      role: user.role,
       isAdmin,
       importExcel: isAdmin
         ? [...EXCEL_MODULES]
-        : user.role?.importExcel || [],
+        : currentRole?.importExcel || [],
       exportExcel: isAdmin
         ? [...EXCEL_MODULES]
-        : user.role?.exportExcel || [],
+        : currentRole?.exportExcel || [],
     };
   }
 

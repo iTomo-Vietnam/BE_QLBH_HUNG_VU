@@ -7,6 +7,7 @@ import { withTransaction } from "@/shared/base/TransactionManager";
 import { StoreTransfer, StoreTransferStatus } from "@/database/models/StoreTransfer";
 import { StoreTransferLine } from "@/database/models/StoreTransferLine";
 import { StoreTransferRepository } from "./storeTransfer.repository";
+import { BadRequestError } from "@/shared/types/errors";
 import { StoreTransferLineRepository } from "./storeTransferLine.repository";
 import { STORE_TRANSFER_TYPES } from "./storeTransfer.types";
 import { INVENTORY_TYPES } from "../inventory/inventory.types";
@@ -184,7 +185,10 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     }
   }
 
-  async validateBeforeCreate(data: DeepPartial<StoreTransfer>, manager: EntityManager): Promise<void> {
+  async validateBeforeCreate(data: DeepPartial<StoreTransfer>, manager: EntityManager, req?: RequestContext): Promise<void> {
+    if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+    if (data.fromStoreId && data.fromStoreId !== req.storeContext.storeId)
+      throw new BadRequestError("Cửa hàng xuất phải là cửa hàng đang thao tác");
     if (!data.code) data.code = await generateCode("storetransfer");
     data.status = StoreTransferStatus.PLANNED;
     data.exportedAt = null;
@@ -220,6 +224,9 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
         relations: { lines: true },
       });
       if (!current) return null;
+      if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+      if (current.fromStoreId !== req.storeContext.storeId)
+        throw new BadRequestError("Không thể cập nhật dữ liệu của cửa hàng khác");
       if ((current.status || StoreTransferStatus.PLANNED) !== StoreTransferStatus.PLANNED) {
         throw new Error("store.transfer.status_locked");
       }
@@ -282,10 +289,10 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   }
 
   private assertStoreScope(req: RequestContext | undefined, allowedStoreIds: (string | null)[]): void {
-    const user = req?.userContext;
     const storeId = req?.storeContext?.storeId;
-    if (!storeId || user?.isAdmin || user?.isSystem) return;
-    if (!allowedStoreIds.includes(storeId)) throw new Error("store.scope.mismatch");
+    if (!storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+    if (!allowedStoreIds.includes(storeId))
+      throw new BadRequestError("Không thể thao tác với dữ liệu của cửa hàng khác");
   }
 
   private async transition(

@@ -31,6 +31,7 @@ export enum DashboardProductTypeCal {
 
 export interface DashboardRequestContext {
   storeId?: string;
+  storeIds?: string[];
   timezone?: string;
 }
 

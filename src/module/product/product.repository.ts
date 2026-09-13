@@ -36,6 +36,17 @@ export class ProductRepository extends BaseRepository<Product> {
     qb: SelectQueryBuilder<Product>,
     options: IFindPaginationOptions<Product>,
   ): Promise<void> {
+    const accessibleStoreIds = options.moreQuery?.accessibleStoreIds as string[] | undefined;
+    if (Array.isArray(accessibleStoreIds)) {
+      if (accessibleStoreIds.length === 0) {
+        qb.andWhere("1 = 0");
+      } else {
+        qb.innerJoin(`${qb.alias}.storeProducts`, "accessStoreProduct");
+        qb.andWhere("accessStoreProduct.storeId IN (:...accessibleStoreIds)", {
+          accessibleStoreIds,
+        });
+      }
+    }
     const {
       productGroupId,
       productGroupIds,

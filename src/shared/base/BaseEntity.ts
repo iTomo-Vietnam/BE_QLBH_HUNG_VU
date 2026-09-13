@@ -6,6 +6,7 @@ import {
   Column,
   ColumnOptions,
 } from "typeorm";
+import { ActionMap } from "../types/interfaces";
 
 export interface UserSnapshot {
   id: string;
@@ -103,6 +104,8 @@ export abstract class BaseEntity {
 
   @Column({ name: "isDefault", type: "boolean", default: false })
   isDefault: boolean;
+
+  _actions?: ActionMap;
 
   // Helper methods
   get isDeleted(): boolean {

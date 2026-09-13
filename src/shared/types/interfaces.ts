@@ -8,7 +8,7 @@ import {
 import { IError } from "./errors";
 import { UserSnapshot } from "../base/BaseEntity";
 import { AttributeType } from "@/database/models/Attribute";
-import { PermissionStructure } from "../middleware/permission.middleware";
+import { Module, PermissionStructure } from "../middleware/permission.middleware";
 
 // Type alias for EntityManager to abstract TypeORM dependency
 export type IEntityManager = EntityManager;
@@ -109,6 +109,15 @@ export interface UserContext {
   employeeId?: string;
 }
 
+export interface StorePermissionContext {
+  storeId: string;
+  roleId?: string | null;
+  roleName?: string | null;
+  permissions: PermissionStructure;
+  importExcel: Module[];
+  exportExcel: Module[];
+}
+
 export interface StoreContext {
   storeId: string;
   companyName: string;
@@ -162,6 +171,9 @@ export type ActionMap = Partial<Record<ActionKey, ActionValue>>;
 export interface RequestContext {
   query?: any;
   permissions?: PermissionStructure;
+  availableStoreIds?: string[];
+  storePermissions?: Record<string, StorePermissionContext>;
+  permissionModule?: string;
   userContext?: UserContext;
   storeContext?: StoreContext;
 }

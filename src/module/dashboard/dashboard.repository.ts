@@ -33,6 +33,11 @@ export class DashboardRepository {
     context: DashboardRequestContext,
     params: unknown[],
   ): string {
+    if (Array.isArray(context.storeIds)) {
+      if (context.storeIds.length === 0) return `AND 1 = 0`;
+      params.push(context.storeIds);
+      return `AND ${alias}."storeId" = ANY($${params.length}::uuid[])`;
+    }
     if (!context.storeId) return "";
     params.push(context.storeId);
     return `AND ${alias}."storeId" = $${params.length}`;
@@ -116,7 +121,11 @@ export class DashboardRepository {
   async getBranches(context: DashboardRequestContext): Promise<BranchRow[]> {
     const params: unknown[] = [];
     let condition = `WHERE s."deletedAt" IS NULL`;
-    if (context.storeId) {
+    if (Array.isArray(context.storeIds)) {
+      if (context.storeIds.length === 0) return [];
+      params.push(context.storeIds);
+      condition += ` AND s.id = ANY($1::uuid[])`;
+    } else if (context.storeId) {
       params.push(context.storeId);
       condition += ` AND s.id = $1`;
     }

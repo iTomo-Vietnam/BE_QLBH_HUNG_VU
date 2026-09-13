@@ -3,6 +3,7 @@ import { Router } from "express";
 import { inject, injectable } from "inversify";
 import { AttributeController } from "./attribute.controller";
 import { ATTRIBUTE_TYPES } from "./attribute.types";
+import { permissionMiddleware } from "@/shared/middleware/permission.middleware";
 import {
   AttributeParamsSchema,
   AttributeQuerySchema,
@@ -26,18 +27,21 @@ export class AttributeRouter {
     this.router.get(
       "/",
       zodValidate(AttributeQuerySchema, "query"),
+      permissionMiddleware("attribute", "read"),
       this.attributeController.getAllWithPagination,
     );
 
     this.router.post(
       "/",
       zodValidate(CreateAttributeSchema, "body"),
+      permissionMiddleware("attribute", "create"),
       this.attributeController.create,
     );
 
     this.router.get(
       "/:id",
       zodValidate(AttributeParamsSchema, "params"),
+      permissionMiddleware("attribute", "read"),
       this.attributeController.getById,
     );
 
@@ -45,12 +49,14 @@ export class AttributeRouter {
       "/:id",
       zodValidate(AttributeParamsSchema, "params"),
       zodValidate(UpdateAttributeSchema, "body"),
+      permissionMiddleware("attribute", "update"),
       this.attributeController.update,
     );
 
     this.router.delete(
       "/:id",
       zodValidate(AttributeParamsSchema, "params"),
+      permissionMiddleware("attribute", "delete"),
       this.attributeController.delete,
     );
   }

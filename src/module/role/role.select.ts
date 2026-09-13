@@ -1,10 +1,10 @@
 import { FindOptionsRelations, FindOptionsSelect } from "typeorm";
 import { BaseSelect } from "@/shared/base/BaseSelect";
-import { Role } from "@/database/models/Role";
+import { Role } from "@/database/models/store/Role";
 
 export const RoleSelectList: FindOptionsSelect<Role> = {
   ...BaseSelect,
-  type: true,
+  storeId: true,
   name: true,
   permissions: true,
   importExcel: true,
@@ -12,7 +12,11 @@ export const RoleSelectList: FindOptionsSelect<Role> = {
 };
 export const RoleSelectFull: FindOptionsSelect<Role> = {
   ...RoleSelectList,
-  users: { id: true, code: true, name: true, username: true, email: true, phone: true, isActive: true },
+  store: { id: true, code: true, name: true },
+  storeUsers: { id: true, userId: true, storeId: true },
 } as any;
 export const RoleRelationsList: FindOptionsRelations<Role> = {};
-export const RoleRelations: FindOptionsRelations<Role> = { users: true };
+export const RoleRelations: FindOptionsRelations<Role> = {
+  store: true,
+  storeUsers: true,
+};

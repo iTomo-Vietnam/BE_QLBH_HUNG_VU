@@ -32,8 +32,9 @@ export class DashboardService {
   private getContext(
     storeId?: string,
     timezone?: string,
+    storeIds?: string[],
   ): DashboardRequestContext {
-    return { storeId, timezone: normalizeTimezone(timezone) };
+    return { storeId, storeIds, timezone: normalizeTimezone(timezone) };
   }
 
   private calculateGrowth(current: number, previous: number): number {
@@ -44,8 +45,9 @@ export class DashboardService {
   async getMetrics(
     storeId?: string,
     timezone?: string,
+    storeIds?: string[],
   ): Promise<DashboardMetrics> {
-    const context = this.getContext(storeId, timezone);
+    const context = this.getContext(storeId, timezone, storeIds);
     const today = resolveDateRange(DashboardTimeView.TODAY, timezone);
     const [metrics, yesterday, previousMonth] = await Promise.all([
       this.repository.getMetrics(context, today),
@@ -68,8 +70,9 @@ export class DashboardService {
     timeView?: DashboardTimeView,
     typeView: DashboardTypeView = DashboardTypeView.DAY,
     typeCal: DashboardTypeCal = DashboardTypeCal.BEFORE_TAX,
+    storeIds?: string[],
   ): Promise<DashboardRevenueBranch[]> {
-    const context = this.getContext(storeId, timezone);
+    const context = this.getContext(storeId, timezone, storeIds);
     const range = resolveDateRange(timeView, timezone);
     const hourRange =
       typeView === DashboardTypeView.HOUR
@@ -94,7 +97,7 @@ export class DashboardService {
       valuesByBranch.set(row.storeId, values);
     }
 
-    return (branches.length ? branches : [{ id: "unknown", name: "Toàn hệ thống" }]).map(
+    return (branches.length ? branches : [{ id: "unknown", name: "Không xác định" }]).map(
       (branch) => {
         const values = valuesByBranch.get(branch.id) || new Map<string, number>();
         return {
@@ -110,9 +113,10 @@ export class DashboardService {
     timezone: string | undefined,
     timeView?: DashboardTimeView,
     typeCal?: DashboardProductTypeCal,
+    storeIds?: string[],
   ): Promise<DashboardTopProduct[]> {
     return this.repository.getTopProducts(
-      this.getContext(storeId, timezone),
+      this.getContext(storeId, timezone, storeIds),
       resolveDateRange(timeView, timezone),
       typeCal,
     );
@@ -122,9 +126,10 @@ export class DashboardService {
     storeId: string | undefined,
     timezone: string | undefined,
     timeView?: DashboardTimeView,
+    storeIds?: string[],
   ): Promise<DashboardTopCustomer[]> {
     return this.repository.getTopCustomers(
-      this.getContext(storeId, timezone),
+      this.getContext(storeId, timezone, storeIds),
       resolveDateRange(timeView, timezone),
     );
   }

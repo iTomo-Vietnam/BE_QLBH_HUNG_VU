@@ -270,12 +270,12 @@ CREATE INDEX IF NOT EXISTS "IDX_gate_logs_company_time"
 -- 10. INDEX CHO XÁC THỰC & PHÂN QUYỀN
 -- ============================================================================
 
-CREATE INDEX IF NOT EXISTS "IDX_company_users_user"
-  ON company_users ("userId")
+CREATE INDEX IF NOT EXISTS "IDX_store_users_user"
+  ON store_users ("userId")
   WHERE "deletedAt" IS NULL;
 
-CREATE INDEX IF NOT EXISTS "IDX_company_users_company"
-  ON company_users ("storeId", "roleId")
+CREATE INDEX IF NOT EXISTS "IDX_store_users_store_role"
+  ON store_users ("storeId", "roleId")
   WHERE "deletedAt" IS NULL;
 
 CREATE INDEX IF NOT EXISTS "IDX_login_approvals_user_device"

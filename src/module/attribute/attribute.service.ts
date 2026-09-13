@@ -40,8 +40,7 @@ export class AttributeService extends BaseService<Attribute> {
     manager: EntityManager,
     req?: RequestContext,
   ): Promise<void> {
-    const existing = await this.repository.getById(id, manager);
-    if (!existing) return;
+    const existing = await this.getById(id, req, manager);
     this.validateStoreAccess(existing, req);
     const canUpdate = await this.canUpdate(existing, req);
     if (!canUpdate.can) throw new BadRequestError(canUpdate.reason);

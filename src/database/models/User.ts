@@ -1,6 +1,5 @@
 import { BaseEntity } from "@/shared/base/BaseEntity";
-import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from "typeorm";
-import { Role } from "./Role";
+import { Column, Entity, OneToMany } from "typeorm";
 import { Address } from "@/shared/base/BaseValidator";
 import { Gender } from "@/shared/constants/enum";
 import { Notification } from "./Notification";
@@ -28,12 +27,6 @@ export class User extends BaseEntity {
   dob: Date | null;
   @Column({ type: "jsonb", default: {} })
   address: Address | null;
-
-  @Column({ type: "uuid", nullable: true, default: null })
-  roleId: string | null;
-  @ManyToOne(() => Role, { onDelete: "SET NULL" })
-  @JoinColumn({ name: "roleId" })
-  role: Role | null;
 
   @Column({ type: "boolean", default: true })
   isActive: boolean;

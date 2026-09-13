@@ -90,18 +90,17 @@ export class ProductController extends BaseController<Product> {
           req.query.storeId ||
           "",
       );
-      const contextStoreId =
-        req.storeContext?.storeId || req.storeContext?.storeId;
+      const contextStoreId = req.storeContext?.storeId;
       const costPrice = Number(req.body.costPrice);
       if (
-        !storeId ||
-        (contextStoreId && storeId !== contextStoreId) ||
+        !contextStoreId ||
+        storeId !== contextStoreId ||
         !Number.isFinite(costPrice) ||
         costPrice < 0
       ) {
         return res.status(400).json({
           success: false,
-          message: "storeId and costPrice are required",
+          message: "Vui lòng chọn đúng cửa hàng đang thao tác và nhập giá vốn hợp lệ",
           statusCode: 400,
         });
       }

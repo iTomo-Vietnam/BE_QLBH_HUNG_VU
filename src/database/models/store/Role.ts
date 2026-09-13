@@ -1,19 +1,11 @@
 import { Entity, Column, OneToMany } from "typeorm";
 import { PermissionStructure } from "@/shared/middleware/permission.middleware";
 import type { Module } from "@/shared/middleware/permission.middleware";
-import { BaseEntity } from "@/shared/base/BaseEntity";
-import { User } from "./User";
-
-export enum RoleType {
-  SYSTEM = "system",
-  STORE = "store",
-}
+import { StoreEntity } from "./StoreEntity";
+import { StoreUser } from "./StoreUser";
 
 @Entity("roles")
-export class Role extends BaseEntity {
-  @Column({ type: "enum", enum: RoleType, default: RoleType.SYSTEM })
-  type: RoleType;
-
+export class Role extends StoreEntity {
   @Column({ type: "varchar", length: 255 })
   name: string;
 
@@ -27,8 +19,8 @@ export class Role extends BaseEntity {
   exportExcel: Module[];
 
   // ============================== RELATIONSHIPS ==============================
-  @OneToMany(() => User, (user) => user.role)
-  users: User[];
+  @OneToMany(() => StoreUser, (su) => su.role)
+  storeUsers: StoreUser[];
 
   userCount?: number;
 }

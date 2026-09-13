@@ -14,6 +14,7 @@ export interface FundSnapshot {
   name: string;
   type: FundType;
   storeId?: string | null;
+  isPersonal?: boolean;
 }
 
 @Entity("funds")
@@ -41,6 +42,9 @@ export class Fund extends BaseEntity {
 
   @Column({ type: "uuid", nullable: true, default: null })
   storeId: string | null;
+
+  @Column({ type: "boolean", default: false })
+  isPersonal: boolean;
   @ManyToOne(() => Store, { onDelete: "SET NULL" })
   store: Store | null;
 
@@ -54,3 +58,4 @@ export class Fund extends BaseEntity {
   currentBalance?: number;
   initialBalance?: number;
 }
+

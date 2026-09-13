@@ -284,3 +284,4 @@ export class PartnerRepository extends BaseRepository<Partner> {
     }
   }
 }
+

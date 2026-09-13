@@ -10,8 +10,6 @@ export const UserSelectBasic: FindOptionsSelect<User> = {
   email: true,
   phone: true,
   isActive: true,
-  roleId: true,
-  role: { id: true, type: true, name: true },
 };
 export const UserSelectList = UserSelectBasic;
 
@@ -22,14 +20,15 @@ export const UserSelectFull: FindOptionsSelect<User> = {
     id: true,
     storeId: true,
     userId: true,
+    roleId: true,
+    role: { id: true, storeId: true, name: true, permissions: true, importExcel: true, exportExcel: true },
     store: { id: true, code: true, name: true, phone: true, isActive: true },
   },
 };
 
 export const UserRelations: FindOptionsRelations<User> = {
-  role: true,
-  storeUsers: { store: true },
+  storeUsers: { store: true, role: true },
 };
 export const UserRelationsList: FindOptionsRelations<User> = {
-  role: true,
+  storeUsers: { store: true, role: true },
 };

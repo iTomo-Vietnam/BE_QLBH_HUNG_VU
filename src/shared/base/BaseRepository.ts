@@ -16,7 +16,7 @@ import {
 } from "typeorm";
 import { createHash } from "crypto";
 import DatabaseConfig from "@/config/database";
-import { NotFoundError } from "@/shared/types/errors";
+import { BadRequestError, NotFoundError } from "@/shared/types/errors";
 import { injectable } from "inversify";
 import { generateCode } from "../utils/code.utils";
 import logger from "../utils/logger";
@@ -46,6 +46,7 @@ export interface MoreQueryOptions<T> {
   creatorIds?: string[]; // Filter by multiple creator IDs
   updaterIds?: string[]; // Filter by multiple updater IDs
   storeIds?: string[]; // Filter by multiple store IDs
+  accessibleStoreIds?: string[]; // Store IDs allowed by the active module permission
   storeId?: string; // Example field for filtering by store ID
   states?: string[];
   wards?: string[];
@@ -366,6 +367,24 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       qb.withDeleted();
     }
 
+    const metadata = repo.metadata;
+    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+    const accessibleStoreIds = req?.availableStoreIds;
+    if (
+      Array.isArray(accessibleStoreIds) &&
+      metadata.columns.some((column) => column.propertyName === "storeId")
+    ) {
+      if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
+      else {
+        qb.andWhere(
+          allowsGlobalStoreScope
+            ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
+            : "entity.storeId IN (:...accessibleStoreIds)",
+          { accessibleStoreIds },
+        );
+      }
+    }
+
     // Join relations nếu có (đệ quy cho nested relations)
     if (this.relations) {
       this.joinRelations(qb, this.relations, "entity");
@@ -375,8 +394,10 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
 
     // Gọi extendQueryBuilder để thêm các select/extra fields
     await this.extendQueryBuilder(qb, {
-      moreQuery: req?.query,
-      storeId: req?.storeContext?.storeId,
+      moreQuery: {
+        ...(req?.query || {}),
+        accessibleStoreIds: req?.availableStoreIds,
+      },
     });
 
     // Nếu có extra select/group thì mapRawEntities, ngược lại getOne
@@ -425,6 +446,22 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
     }
 
     // Relations
+    const accessibleStoreIds = req?.availableStoreIds;
+    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+    if (
+      Array.isArray(accessibleStoreIds) &&
+      repo.metadata.columns.some((column) => column.propertyName === "storeId")
+    ) {
+      if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
+      else {
+        qb.andWhere(
+          allowsGlobalStoreScope
+            ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
+            : "entity.storeId IN (:...accessibleStoreIds)",
+          { accessibleStoreIds },
+        );
+      }
+    }
     if (this.relations) {
       this.joinRelations(qb, this.relations, "entity");
     }
@@ -433,7 +470,7 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
 
     // Extend
     await this.extendQueryBuilder(qb, {
-      moreQuery: req?.query,
+      moreQuery: { ...(req?.query || {}), accessibleStoreIds },
     });
 
     const hasGroupBy = (qb as any).expressionMap?.groupBys?.length > 0;
@@ -676,7 +713,28 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
         (col) => col.propertyName === "storeId",
       );
       if (hasStoreIdColumn) {
-        qb.andWhere("entity.storeId IN (:...storeIds)", { storeIds });
+        qb.andWhere((this.entityClass as any).name === "Fund"
+          ? "(entity.storeId IN (:...storeIds) OR entity.storeId IS NULL)"
+          : "entity.storeId IN (:...storeIds)", { storeIds });
+      }
+    }
+
+    const accessibleStoreIds = (options.moreQuery || options).accessibleStoreIds;
+    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+    if (Array.isArray(accessibleStoreIds)) {
+      const hasStoreIdColumn = entityMetadata.columns.some(
+        (col) => col.propertyName === "storeId",
+      );
+      if (hasStoreIdColumn) {
+        if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
+        else {
+          qb.andWhere(
+            allowsGlobalStoreScope
+              ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
+              : "entity.storeId IN (:...accessibleStoreIds)",
+            { accessibleStoreIds },
+          );
+        }
       }
     }
 
@@ -1054,8 +1112,18 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
     }
 
     if (hasStoreIdColumn) {
+      const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+      if (req && !storeId && !allowsGlobalStoreScope)
+        throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
       if ((data as any).storeId === undefined) {
         (data as any).storeId = storeId || null;
+      }
+      if (
+        req &&
+        (data as any).storeId !== storeId &&
+        !(allowsGlobalStoreScope && (data as any).storeId == null)
+      ) {
+        throw new BadRequestError("Dữ liệu phải thuộc cửa hàng đang thao tác");
       }
     }
 
@@ -1135,9 +1203,19 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
 
     if (hasStoreIdColumn) {
       const storeId = req?.storeContext?.storeId;
+      const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+      if (req && !storeId && !allowsGlobalStoreScope)
+        throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
       data.forEach((item) => {
         if ((item as any).storeId === undefined) {
           (item as any).storeId = storeId || null;
+        }
+        if (
+          req &&
+          (item as any).storeId !== storeId &&
+          !(allowsGlobalStoreScope && (item as any).storeId == null)
+        ) {
+          throw new BadRequestError("Dữ liệu phải thuộc cửa hàng đang thao tác");
         }
       });
     }

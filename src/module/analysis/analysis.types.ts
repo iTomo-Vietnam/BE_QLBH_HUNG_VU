@@ -27,11 +27,13 @@ export interface AnalysisRange {
 export interface AnalysisScope {
   branch: string;
   timezone: string;
+  storeIds?: string[];
 }
 
 export interface AnalysisQuery {
   period?: string;
   storeId?: string;
+  storeIds?: string[];
   sortBy?: AnalysisSortBy;
   timezone?: string;
 }

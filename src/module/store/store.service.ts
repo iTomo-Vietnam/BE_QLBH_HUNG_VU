@@ -14,12 +14,18 @@ export class StoreService extends BaseService<Store> {
   protected uniqueFields: (keyof Store)[] = ["code"];
   protected searchableFields = ["code", "name", "email", "phone"];
 
-  constructor(@inject(STORE_TYPES.StoreRepository) repository: StoreRepository) {
+  constructor(
+    @inject(STORE_TYPES.StoreRepository) repository: StoreRepository,
+  ) {
     super();
     this.repository = repository;
   }
 
-  async validateBeforeCreate(_data: DeepPartial<Store>, _manager: EntityManager, _req?: RequestContext): Promise<void> {}
+  async validateBeforeCreate(
+    _data: DeepPartial<Store>,
+    _manager: EntityManager,
+    _req?: RequestContext,
+  ): Promise<void> {}
 
   async actionAfterCreate(data: Store, manager: EntityManager): Promise<void> {
     await ensureDefaultCashFund(data.id, data.code, manager);

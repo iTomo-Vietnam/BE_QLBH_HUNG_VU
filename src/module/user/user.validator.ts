@@ -19,6 +19,7 @@ const UserStoreSchema = z.object({
   id: z.uuid().optional(),
   tempId: z.uuid().nullish(),
   storeId: z.uuid(),
+  roleId: z.uuid().nullish(),
 });
 
 const UserStoreListSchema = z
@@ -44,7 +45,6 @@ export const CreateUserSchema = BaseCreateSchema.extend({
   dob: DateTransform.nullish(),
   address: AddressSchema.nullish(),
 
-  roleId: z.uuid().nullish(),
   isActive: z.boolean().optional().default(true),
   storeUsers: UserStoreListSchema.optional().default([]),
 });
@@ -62,13 +62,11 @@ export const UpdateUserSchema = BaseUpdateSchema.extend({
   dob: DateTransform.nullish(),
   address: AddressSchema.nullish(),
 
-  roleId: z.uuid().nullish(),
   isActive: z.boolean().optional(),
   storeUsers: UserStoreListSchema.optional(),
 });
 
 export const UserQuerySchema = BaseQuerySchema.extend({
-  roleId: z.uuid().optional(),
   roleIds: zArrayable(z.uuid()),
 });
 

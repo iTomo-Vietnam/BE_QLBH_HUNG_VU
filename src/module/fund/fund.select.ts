@@ -4,7 +4,7 @@ import { Fund } from "@/database/models/Fund";
 
 export const FundSelectList: FindOptionsSelect<Fund> = {
   ...BaseSelect, code: true, name: true, type: true, bank: true,
-  accountNumber: true, accountHolderName: true, branch: true, storeId: true, isActive: true,
+  accountNumber: true, accountHolderName: true, branch: true, storeId: true, isPersonal: true, isActive: true,
   isDefault: true,
   store: { id: true, code: true, name: true },
 };

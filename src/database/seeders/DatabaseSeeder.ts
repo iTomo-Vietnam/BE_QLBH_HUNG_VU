@@ -1,9 +1,8 @@
 import { DeepPartial, EntityManager } from "typeorm";
 import DatabaseConfig from "@/config/database";
 import { AuthUtils } from "@/shared/utils/auth.utils";
-import { createPermissions } from "@/shared/middleware/permission.middleware";
 import { Attribute, AttributeType } from "../models/Attribute";
-import { Role } from "../models/Role";
+import { Role } from "../models/store/Role";
 import { Store } from "../models/Store";
 import { Fund } from "../models/Fund";
 import { StoreUser } from "../models/store/StoreUser";
@@ -14,21 +13,19 @@ import { attributeSeeders } from "./attribute/seedData";
 import { storeSeeders } from "./store";
 import { ensureDefaultCashFund } from "@/module/fund/fund.service";
 
-async function upsertRoles(manager: EntityManager): Promise<Map<string, Role>> {
+async function upsertRoles(manager: EntityManager, stores: Store[]): Promise<void> {
   const repository = manager.getRepository(Role);
-  const result = new Map<string, Role>();
-  for (const seed of roleSeeders) {
-    const existing = await repository.findOne({
-      where: { name: seed.name!, type: seed.type! } as any,
-    });
-    const role = existing
-      ? repository.merge(existing, seed)
-      : repository.create(seed);
-    role.permissions = seed.permissions || createPermissions("empty");
-    const saved = await repository.save(role);
-    result.set(seed.name!, saved);
+  for (const store of stores) {
+    for (const seed of roleSeeders) {
+      const existing = await repository.findOne({
+        where: { name: seed.name!, storeId: store.id } as any,
+      });
+      const role = existing
+        ? repository.merge(existing, seed)
+        : repository.create({ ...seed, storeId: store.id });
+      await repository.save(role);
+    }
   }
-  return result;
 }
 
 async function upsertStores(manager: EntityManager): Promise<Store[]> {
@@ -125,8 +122,8 @@ export class DatabaseSeeder {
     await DatabaseConfig.initialize();
     try {
       await DatabaseConfig.transaction(async (manager) => {
-        const roles = await upsertRoles(manager);
         const stores = await upsertStores(manager);
+        await upsertRoles(manager, stores);
         await Promise.all(
           stores.map((store) => ensureDefaultCashFund(store.id, store.code, manager)),
         );

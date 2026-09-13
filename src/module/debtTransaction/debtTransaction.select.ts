@@ -20,3 +20,4 @@ export const DebtTransactionSelectFull: FindOptionsSelect<DebtTransaction> = {
 
 export const DebtTransactionRelations: FindOptionsRelations<DebtTransaction> = {};
 export const DebtTransactionRelationsList: FindOptionsRelations<DebtTransaction> = {};
+

@@ -29,3 +29,4 @@ export class VatTransactionController extends BaseController<VatTransaction> {
     });
   };
 }
+

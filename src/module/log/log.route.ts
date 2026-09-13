@@ -4,6 +4,7 @@ import { zodValidate } from "@/shared/middleware/validation.middleware";
 import { LOG_TYPES } from "./log.types";
 import { LogController } from "./log.controller";
 import { LogParamsSchema, LogQuerySchema } from "./log.validator";
+import { permissionMiddleware } from "@/shared/middleware/permission.middleware";
 
 @injectable()
 export class LogRouter {
@@ -22,6 +23,7 @@ export class LogRouter {
     this.router.get(
       "/",
       zodValidate(LogQuerySchema, "query"),
+      permissionMiddleware("log", "read"),
       this.controller.getAllWithPagination,
     );
 
@@ -29,6 +31,7 @@ export class LogRouter {
     this.router.get(
       "/:id",
       zodValidate(LogParamsSchema, "params"),
+      permissionMiddleware("log", "read"),
       this.controller.getById,
     );
   }

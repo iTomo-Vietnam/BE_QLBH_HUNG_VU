@@ -171,11 +171,11 @@ export class NotificationService extends BaseService<Notification> {
     try {
       const rows = await this.repository.getRepository().manager.query(
         `
-        SELECT DISTINCT cu."userId"
-        FROM company_users cu
-        INNER JOIN roles r ON r.id = cu."roleId" AND r."deletedAt" IS NULL
-        WHERE cu."storeId" = $1
-          AND cu."deletedAt" IS NULL
+        SELECT DISTINCT su."userId"
+        FROM store_users su
+        INNER JOIN roles r ON r.id = su."roleId" AND r."deletedAt" IS NULL
+        WHERE su."storeId" = $1
+          AND su."deletedAt" IS NULL
           AND r.permissions->>$2 IS NOT NULL
           AND r.permissions->$2 ? $3
       `,
@@ -324,16 +324,15 @@ export class NotificationService extends BaseService<Notification> {
 
       const rows = await this.repository.getRepository().manager.query(
         `
-        SELECT DISTINCT cu."userId"
-        FROM company_users cu
-        INNER JOIN roles r ON r.id = cu."roleId" AND r."deletedAt" IS NULL
-        WHERE cu."storeId" = $1
-          AND cu."employeeId" = $2
-          AND cu."deletedAt" IS NULL
-          AND r.permissions->>$3 IS NOT NULL
-          AND r.permissions->$3 ? $4
+        SELECT DISTINCT su."userId"
+        FROM store_users su
+        INNER JOIN roles r ON r.id = su."roleId" AND r."deletedAt" IS NULL
+        WHERE su."storeId" = $1
+          AND su."deletedAt" IS NULL
+          AND r.permissions->>$2 IS NOT NULL
+          AND r.permissions->$2 ? $3
       `,
-        [storeId, staffId, module, "read"],
+        [storeId, module, "read"],
       );
 
       const userIds = (rows as any[]).map((r) => r.userId);

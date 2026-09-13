@@ -39,15 +39,9 @@ export const injectRequestContext = (
       }
 
       // User STORE luôn bị giới hạn ở cửa hàng đang chọn. Admin/system được
-      // phép gửi storeId = null để chuyển một quỹ ngân hàng về toàn hệ thống.
-      const preserveGlobalScope =
-        scope === "body" &&
-        Object.prototype.hasOwnProperty.call(next, "storeId") &&
-        next.storeId === null &&
-        (userCtx?.isAdmin || userCtx?.isSystem);
-      if (companyCtx && !preserveGlobalScope) {
-        next.storeId = next.storeId || companyCtx.storeId;
-      }
+      // storeId luôn bị ghi đè bởi cửa hàng đang thao tác.
+      const isFundRequest = /\/fund(?:\/|$)/.test(req.originalUrl.split("?")[0]);
+      if (companyCtx && !isFundRequest) next.storeId = companyCtx.storeId;
 
       // Inject storeId xuống các array con (chỉ áp dụng cho body)
       if (scope === "body" && next.storeId) {

@@ -177,6 +177,7 @@ export abstract class BaseService<T extends BaseEntity> {
   async hydrateEntity(entity: T, req?: RequestContext): Promise<void> {
     await this.attachMoreDataToEntity(entity, req);
     await this.attachActions(entity as T & { _actions?: ActionMap }, req);
+    this.restrictCrossStoreActions(entity as T & { _actions?: ActionMap }, req);
   }
 
   /**
@@ -189,6 +190,25 @@ export abstract class BaseService<T extends BaseEntity> {
         this.attachActions(entity as T & { _actions?: ActionMap }, req),
       ),
     );
+    entities.forEach((entity) =>
+      this.restrictCrossStoreActions(entity as T & { _actions?: ActionMap }, req),
+    );
+  }
+
+  private restrictCrossStoreActions(
+    entity: T & { _actions?: ActionMap },
+    req?: RequestContext,
+  ): void {
+    const entityStoreId = (entity as any).storeId as string | undefined;
+    if (!entityStoreId || !req) return;
+    const currentStoreId = req.storeContext?.storeId;
+    if (currentStoreId === entityStoreId) return;
+    const reason = currentStoreId
+      ? "Không thể thao tác với dữ liệu của cửa hàng khác"
+      : "Vui lòng chọn cửa hàng đang thao tác";
+    for (const key of ["update", "delete", "assign", "unassign", "confirm", "cancelConfirm", "cancel", "approve", "reject", "submit", "complete", "archive", "restore", "updateMode", "start", "arrive", "accept", "pay", "import", "remind"] as const) {
+      if (entity._actions?.[key]) entity._actions[key] = { can: false, reason };
+    }
   }
 
   // =====================================================
@@ -220,7 +240,13 @@ export abstract class BaseService<T extends BaseEntity> {
   ): Promise<ApiResponse<T[]>> {
     let page = options.page || 1;
     const size = options.size || 20;
-    const storeId = req?.storeContext?.storeId || options.storeId;
+    const requestedStoreIds = (options as any).storeIds as string[] | undefined;
+    const accessibleStoreIds = req?.availableStoreIds;
+    const storeIds = Array.isArray(accessibleStoreIds)
+      ? Array.isArray(requestedStoreIds)
+        ? requestedStoreIds.filter((id) => accessibleStoreIds.includes(id))
+        : accessibleStoreIds
+      : requestedStoreIds;
 
     const optionData: IFindPaginationOptions<T> = {
       ...options,
@@ -230,8 +256,9 @@ export abstract class BaseService<T extends BaseEntity> {
       searchFields: this.searchableFields,
       summaryFields: this.summaryFields as (keyof T)[] | undefined,
       timeField: this.timeField,
-      storeId,
-      moreQuery: options,
+      storeIds,
+      accessibleStoreIds,
+      moreQuery: { ...options, storeIds, accessibleStoreIds },
     };
 
     let dataRes = await this.repository.findWithPagination(optionData, manager);
@@ -258,8 +285,12 @@ export abstract class BaseService<T extends BaseEntity> {
     );
   }
 
-  async getById(id: string, req?: RequestContext): Promise<T> {
-    const data = await this.findById(id, undefined, req);
+  async getById(
+    id: string,
+    req?: RequestContext,
+    manager?: EntityManager,
+  ): Promise<T> {
+    const data = await this.findById(id, manager, req);
     if (!data) {
       throw new NotFoundError("Không tìm thấy dữ liệu", [
         { field: "id", message: "Không tìm thấy dữ liệu" },
@@ -273,7 +304,7 @@ export abstract class BaseService<T extends BaseEntity> {
     manager?: EntityManager,
     req?: RequestContext,
   ): Promise<T | null> {
-    return this.repository.findById(id, manager);
+    return this.repository.findById(id, manager, req);
   }
 
   async findOne(options: FindOneOptions<T>): Promise<T | null> {
@@ -452,24 +483,30 @@ export abstract class BaseService<T extends BaseEntity> {
     if (data.isDefault && (data as any).name) delete (data as any).name;
 
     const runWithManager = async (manager: EntityManager) => {
-      await this.validateBeforeUpdate(id, data, manager, req);
+      const entity = await this.getById(id, req, manager);
 
-      const entity = await this.repository.findOne({
-        where: { id } as any,
-      });
+      await this.validateBeforeUpdate(id, data, manager, req);
 
       if (!entity) {
         throw new NotFoundError("Không tìm thấy dữ liệu", "id");
       }
 
-      if (
-        storeId &&
-        (entity as any).storeId &&
-        (entity as any).storeId !== storeId
-      ) {
+      if ((entity as any).storeId && !storeId) {
+        throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+      }
+      const isFund = (this.repository as any).entityClass?.name === "Fund";
+      if ((entity as any).storeId && (entity as any).storeId !== storeId) {
         throw new BadRequestError(
           "Dữ liệu không thuộc công ty của bạn, không thể cập nhật",
         );
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(data, "storeId") &&
+        (data as any).storeId !== (entity as any).storeId &&
+        !(isFund && ((data as any).storeId == null || (entity as any).storeId == null))
+      ) {
+        throw new BadRequestError("Không thể chuyển dữ liệu sang cửa hàng khác");
       }
 
       // perform unique check if configured (exclude self by providing id)
@@ -546,14 +583,13 @@ export abstract class BaseService<T extends BaseEntity> {
   ): Promise<boolean> {
     const storeId = req?.storeContext?.storeId;
     const runWithManager = async (manager: EntityManager) => {
-      const entity = await this.findById(id, manager);
+      const entity = await this.getById(id, req, manager);
       if (!entity) throw new NotFoundError("Không tìm thấy dữ liệu cần xóa");
 
-      if (
-        storeId &&
-        (entity as any).storeId &&
-        (entity as any).storeId !== storeId
-      ) {
+      if ((entity as any).storeId && !storeId) {
+        throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+      }
+      if ((entity as any).storeId && (entity as any).storeId !== storeId) {
         throw new BadRequestError(
           "Dữ liệu không thuộc công ty của bạn, không thể xóa",
         );
@@ -576,13 +612,12 @@ export abstract class BaseService<T extends BaseEntity> {
   ): Promise<boolean> {
     const storeId = req?.storeContext?.storeId;
     const runWithManager = async (manager: EntityManager) => {
-      const entities = await this.repository.findByIds(ids, manager);
+      const entities = await this.repository.findByIds(ids, manager, req as any);
       for (const entity of entities) {
-        if (
-          storeId &&
-          (entity as any).storeId &&
-          (entity as any).storeId !== storeId
-        ) {
+        if ((entity as any).storeId && !storeId) {
+          throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+        }
+        if ((entity as any).storeId && (entity as any).storeId !== storeId) {
           throw new BadRequestError(
             "Dữ liệu không thuộc công ty của bạn, không thể xóa",
           );
@@ -920,6 +955,9 @@ export abstract class BaseService<T extends BaseEntity> {
           permissions: (req as any).permissions,
           userContext: (req as any).userContext,
           storeContext: (req as any).storeContext,
+          availableStoreIds: (req as any).availableStoreIds,
+          storePermissions: (req as any).storePermissions,
+          permissionModule: (req as any).permissionModule,
         }
       : undefined;
   }

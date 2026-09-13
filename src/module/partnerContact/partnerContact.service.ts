@@ -44,9 +44,9 @@ export class PartnerContactService extends BaseService<PartnerContact> {
     id: string,
     data: DeepPartial<PartnerContact>,
     manager?: EntityManager,
-    _req?: RequestContext,
+    req?: RequestContext,
   ): Promise<void> {
-    const contact = await this.repository.findById(id, manager);
+    const contact = await this.getById(id, req, manager);
     const partner = contact?.partnerId
       ? await this.partnerRepository.findById(contact.partnerId, manager)
       : null;

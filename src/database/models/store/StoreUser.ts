@@ -1,5 +1,6 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { User } from "../User";
+import { Role } from "./Role";
 import { StoreEntity } from "./StoreEntity";
 
 /**
@@ -12,10 +13,19 @@ export class StoreUser extends StoreEntity {
   @Column({ type: "uuid" })
   userId: string;
 
+  @Column({ type: "uuid", nullable: true, default: null })
+  roleId: string | null;
+
   // ============================== RELATIONSHIPS ==============================
   @ManyToOne(() => User, (user) => user.storeUsers, {
     onDelete: "CASCADE",
   })
   @JoinColumn({ name: "userId" })
   user: User;
+
+  @ManyToOne(() => Role, (role) => role.storeUsers, {
+    onDelete: "SET NULL",
+  })
+  @JoinColumn({ name: "roleId" })
+  role: Role | null;
 }

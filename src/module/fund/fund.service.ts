@@ -3,7 +3,7 @@ import { DeepPartial, EntityManager, IsNull } from "typeorm";
 import { Fund, FundType } from "@/database/models/Fund";
 import { FundAdjustment } from "@/database/models/FundAdjustment";
 import { BaseService } from "@/shared/base/BaseService";
-import { BadRequestError, NotFoundError } from "@/shared/types/errors";
+import { BadRequestError } from "@/shared/types/errors";
 import { ActionMap, RequestContext } from "@/shared/types/interfaces";
 import { generateCode } from "@/shared/utils/code.utils";
 import { FundRepository } from "./fund.repository";
@@ -63,6 +63,7 @@ export async function ensureDefaultCashFund(
       name: "Tiền mặt",
       type: FundType.CASH,
       storeId,
+      isPersonal: false,
       isDefault: true,
       isActive: true,
     }),
@@ -94,13 +95,14 @@ export class FundService extends BaseService<Fund> {
     }
 
     const hasStoreId = Object.prototype.hasOwnProperty.call(data, "storeId");
-    if (!hasStoreId) {
-      data.storeId = req?.storeContext?.storeId ?? null;
-    }
+    if (!hasStoreId) data.storeId = req?.storeContext?.storeId ?? null;
 
-    // Quỹ tiền mặt luôn thuộc một cửa hàng; quỹ ngân hàng có thể dùng toàn hệ thống.
-    if (data.type === FundType.CASH && !data.storeId) {
-      throw new BadRequestError("fund.cash.store.required");
+    // Tiền mặt luôn là tài khoản công ty; chỉ tài khoản ngân hàng mới có thể
+    // được đánh dấu là tài khoản cá nhân.
+    if (data.type === FundType.CASH) data.isPersonal = false;
+    else data.isPersonal = Boolean(data.isPersonal);
+    if (data.isPersonal && !data.storeId) {
+      throw new BadRequestError("Tài khoản cá nhân phải thuộc một cửa hàng");
     }
 
     // initialBalance chỉ dùng ở bước tạo mới; actionAfterCreate sẽ ghi nhận
@@ -120,11 +122,9 @@ export class FundService extends BaseService<Fund> {
     id: string,
     data: DeepPartial<Fund>,
     manager: EntityManager,
+    req?: RequestContext,
   ): Promise<void> {
-    const existing = await manager.getRepository(Fund).findOne({
-      where: { id, deletedAt: IsNull() } as any,
-    });
-    if (!existing) throw new NotFoundError("fund.not_found", "id");
+    const existing = await this.getById(id, req, manager);
     if (existing.isDefault) {
       throw new BadRequestError("fund.default.immutable");
     }
@@ -138,9 +138,21 @@ export class FundService extends BaseService<Fund> {
     const nextType = data.type ?? existing.type;
     const hasStoreId = Object.prototype.hasOwnProperty.call(data, "storeId");
     const nextStoreId = hasStoreId ? data.storeId : existing.storeId;
+    const nextIsPersonal = data.isPersonal ?? existing.isPersonal;
 
-    if (nextType === FundType.CASH && !nextStoreId) {
-      throw new BadRequestError("fund.cash.store.required");
+    if (
+      hasStoreId &&
+      nextStoreId &&
+      req?.storeContext?.storeId &&
+      nextStoreId !== req.storeContext.storeId &&
+      !req.userContext?.isAdmin
+    ) {
+      throw new BadRequestError("Chỉ được gắn quỹ với cửa hàng đang thao tác");
+    }
+
+    if (nextType === FundType.CASH) data.isPersonal = false;
+    else if (nextIsPersonal && !nextStoreId) {
+      throw new BadRequestError("Tài khoản cá nhân phải thuộc một cửa hàng");
     }
     if (
       existing.type === FundType.CASH &&

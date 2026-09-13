@@ -86,13 +86,14 @@ export class ProductService extends BaseService<Product> {
     id: string,
     data: DeepPartial<Product>,
     manager: EntityManager,
+    req?: RequestContext,
   ): Promise<void> {
     if (
       Object.prototype.hasOwnProperty.call(data, "barcode") &&
       !String(data.barcode ?? "").trim()
     ) {
-      const existing = await this.repository.getById(id, manager);
-      this.fillBarcodeIfEmpty(data, data.code || existing?.code);
+      const existing = await this.getById(id, req, manager);
+      this.fillBarcodeIfEmpty(data, data.code || existing.code);
     }
     if (Array.isArray((data as any).extraUnits)) {
       await this.validateExtraUnits((data as any).extraUnits, manager);
@@ -463,6 +464,8 @@ export class ProductService extends BaseService<Product> {
     }
     const products = await this.repository.find(options);
     const storeId = (query as any).storeId || req?.storeContext?.storeId;
+    if (Array.isArray(req?.availableStoreIds) && storeId && !req.availableStoreIds.includes(storeId))
+      return [];
     if (!storeId || !products.length) return products;
     const histories = await this.priceHistoryRepository.getRepository().find({
       where: {
@@ -488,8 +491,19 @@ export class ProductService extends BaseService<Product> {
     );
     if (!normalizedCodes.length) return [];
 
+    const where: any = { code: In(normalizedCodes), deletedAt: IsNull() };
+    if (Array.isArray(req?.availableStoreIds)) {
+      if (req.availableStoreIds.length === 0) return [];
+      const storeProducts = await this.storeProductRepository.getRepository().find({
+        where: { storeId: In(req.availableStoreIds) } as any,
+        select: { productId: true } as any,
+      });
+      const productIds = [...new Set(storeProducts.map((item) => item.productId))];
+      if (!productIds.length) return [];
+      where.id = In(productIds);
+    }
     const products = await this.repository.find({
-      where: { code: In(normalizedCodes), deletedAt: IsNull() } as any,
+      where,
       relations: {
         group: true,
         brand: true,
