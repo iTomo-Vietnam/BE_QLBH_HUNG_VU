@@ -2,6 +2,7 @@ import { BaseEntity, UserSnapshot } from "@/shared/base/BaseEntity";
 import { Column, Entity, JoinColumn, ManyToOne, OneToMany } from "typeorm";
 import { StoreTransferLine } from "./StoreTransferLine";
 import { Store, StoreSnapshot } from "./Store";
+import { User } from "./User";
 
 export enum StoreTransferStatus {
   PLANNED = "planned",
@@ -29,6 +30,9 @@ export class StoreTransfer extends BaseEntity {
   exporterId: string | null;
   @Column({ type: "jsonb", nullable: true, default: null })
   exporterSnapshot: UserSnapshot | null;
+  @ManyToOne(() => User, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "exporterId" })
+  exporter: User | null;
 
   @Column({ type: "timestamptz", nullable: true, default: null })
   importedAt: Date | null;
@@ -36,6 +40,9 @@ export class StoreTransfer extends BaseEntity {
   importerId: string | null;
   @Column({ type: "jsonb", nullable: true, default: null })
   importerSnapshot: UserSnapshot | null;
+  @ManyToOne(() => User, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "importerId" })
+  importer: User | null;
 
   @Column({ type: "timestamptz", nullable: true, default: null })
   canceledAt: Date | null;
@@ -43,6 +50,9 @@ export class StoreTransfer extends BaseEntity {
   cancelerId: string | null;
   @Column({ type: "jsonb", nullable: true, default: null })
   cancelerSnapshot: UserSnapshot | null;
+  @ManyToOne(() => User, { onDelete: "SET NULL" })
+  @JoinColumn({ name: "cancelerId" })
+  canceler: User | null;
 
   @Column({ type: "varchar", length: 50 })
   code: string;
