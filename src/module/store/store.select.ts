@@ -11,6 +11,7 @@ export const StoreSelectBasic: FindOptionsSelect<Store> = {
   taxCode: true,
   address: true,
   isActive: true,
+  workEndTime: true,
 };
 
 export const StoreSelectFull: FindOptionsSelect<Store> = {

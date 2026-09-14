@@ -76,6 +76,7 @@ export const CompleteModules: Module[] = [
   "purchase",
   "purchaseReturn",
   "storeTransfer",
+  "incomeExpense",
 ];
 export const readPermissionFallbackMap: Partial<Record<Module, Module[]>> = {
   product: [

@@ -32,6 +32,10 @@ export class Store extends BaseEntity {
   @Column({ type: "boolean", default: true })
   isActive: boolean;
 
+  /** Giờ kết thúc ngày làm việc của cửa hàng, định dạng HH:mm. */
+  @Column({ type: "time", nullable: true, default: null })
+  workEndTime: string | null;
+
   @OneToMany(() => Fund, (fund) => fund.store, { cascade: true })
   funds: Fund[];
 

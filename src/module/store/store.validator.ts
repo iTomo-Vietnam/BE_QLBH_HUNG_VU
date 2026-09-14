@@ -14,6 +14,7 @@ export const CreateStoreSchema = BaseCreateSchema.extend({
   email: z.email().optional(),
   taxCode: z.string().optional(),
   address: AddressSchema.nullish(),
+  workEndTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullish(),
 });
 
 export const UpdateStoreSchema = BaseUpdateSchema.extend({
@@ -24,6 +25,7 @@ export const UpdateStoreSchema = BaseUpdateSchema.extend({
   taxCode: z.string().nullish(),
   address: AddressSchema.nullish(),
   isActive: z.boolean().optional(),
+  workEndTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullish(),
 });
 
 export const StoreQuerySchema = BaseQuerySchema;

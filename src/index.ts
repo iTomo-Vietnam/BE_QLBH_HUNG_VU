@@ -21,6 +21,7 @@ import session from "express-session";
 import { initializePassport } from "./config/passport";
 import { asyncHandler } from "./shared/utils/controller.utils";
 import { Request, Response, NextFunction } from "express";
+import { StoreWorkdayJob } from "./job/storeWorkday.job";
 
 class App {
   public app: express.Application;
@@ -160,7 +161,7 @@ class App {
   }
 
   private initializeJobs(): void {
-    // Store ledger replay is invoked by store transaction services.
+    StoreWorkdayJob.start();
   }
 
   private initializeErrorHandling(): void {

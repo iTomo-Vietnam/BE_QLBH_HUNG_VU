@@ -9,6 +9,7 @@ import { StoreTransferLineRepository } from "./storeTransferLine.repository";
 import { PRODUCT_TYPES } from "../product/product.types";
 import { ATTRIBUTE_TYPES } from "../attribute/attribute.types";
 import { STORE_TYPES } from "../store/store.types";
+import { NOTIFICATION_TYPES } from "../notification/notification.types";
 
 export const storeTransferModule = new ContainerModule((bind) => {
   bind(STORE_TRANSFER_TYPES.Repository).to(StoreTransferRepository).inSingletonScope();
@@ -21,6 +22,7 @@ export const storeTransferModule = new ContainerModule((bind) => {
       context.container.get(ATTRIBUTE_TYPES.AttributeRepository),
       context.container.get(STORE_TYPES.StoreRepository),
       context.container.get(INVENTORY_TYPES.InventoryRecalculateService),
+      context.container.get(NOTIFICATION_TYPES.NotificationService),
     ))
     .inSingletonScope();
   bind(STORE_TRANSFER_TYPES.Controller)

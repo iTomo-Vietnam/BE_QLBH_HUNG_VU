@@ -34,6 +34,8 @@ export enum NotificationType {
   PURCHASE = "purchase",
   SHIPPING_PLAN = "shippingPlan",
   PAYMENT_REQUEST = "paymentRequest",
+  STORE_WORKDAY = "storeWorkday",
+  STORE_TRANSFER = "storeTransfer",
 }
 
 @Index("IDX_notifications_userId", ["userId"])

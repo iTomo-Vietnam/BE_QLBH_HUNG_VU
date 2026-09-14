@@ -12,7 +12,9 @@ export const NotificationTitleMap: Record<
 > = {
   [NotificationType.SYSTEM]: {},
   [NotificationType.USER]: {},
-  [NotificationType.ORDER]: {},
+  [NotificationType.ORDER]: {
+    [ActionType.PENDING]: "Phiếu cần hoàn thành",
+  },
   [NotificationType.ORDER_LINE]: {
     [ActionType.DAILY_WARNING]: "Đến ngày chạy máy",
   },
@@ -58,6 +60,14 @@ export const NotificationTitleMap: Record<
     [ActionType.PENDING]: "Đề nghị thanh toán cần phê duyệt",
     [ActionType.APPROVE]: "Đề nghị thanh toán đã được duyệt",
     [ActionType.REJECT]: "Đề nghị thanh toán bị từ chối",
+  },
+  [NotificationType.STORE_WORKDAY]: {
+    [ActionType.REMINDER]: "Công việc chưa hoàn thành",
+    [ActionType.CANCEL]: "Phiếu chưa hoàn thành đã bị hủy",
+  },
+  [NotificationType.STORE_TRANSFER]: {
+    [ActionType.PENDING]: "Phiếu chuyển kho cần xử lý",
+    [ActionType.COMPLETE]: "Phiếu chuyển kho đã xuất, chờ nhập kho",
   },
 };
 
@@ -124,4 +134,14 @@ export const notificationContent: NotificationContent = {
     "Đề nghị thanh toán {code} mà bạn tạo/phụ trách đã được duyệt",
   [`${NotificationType.PAYMENT_REQUEST}.${ActionType.REJECT}`]:
     "Đề nghị thanh toán {code} mà bạn tạo/phụ trách đã bị từ chối",
+  [`${NotificationType.ORDER}.${ActionType.PENDING}`]:
+    "Phiếu {code} cần được hoàn thành",
+  [`${NotificationType.STORE_TRANSFER}.${ActionType.PENDING}`]:
+    "Phiếu chuyển kho {code} đang chờ xuất kho",
+  [`${NotificationType.STORE_TRANSFER}.${ActionType.COMPLETE}`]:
+    "Phiếu chuyển kho {code} đã xuất, đang chờ nhập kho",
+  [`${NotificationType.STORE_WORKDAY}.${ActionType.REMINDER}`]:
+    "{message}",
+  [`${NotificationType.STORE_WORKDAY}.${ActionType.CANCEL}`]:
+    "{message}",
 };

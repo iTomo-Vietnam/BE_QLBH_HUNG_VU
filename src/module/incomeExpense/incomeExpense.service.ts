@@ -1,5 +1,5 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager, In, IsNull } from "typeorm";
+import { DeepPartial, EntityManager, In, IsNull, LessThanOrEqual } from "typeorm";
 import {
   IncomeExpense,
   IncomeExpenseStatus,
@@ -131,6 +131,35 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
 
   async actionAfterDelete(data: IncomeExpense, manager: EntityManager): Promise<void> {
     await this.debtService.removeIncomeExpenseReferences(data.id, manager);
+  }
+
+  /** Hủy các phiếu thu/chi nháp do scheduler xử lý sau giờ làm việc. */
+  async cancelDraftsForSystem(storeId: string, createdBefore: Date): Promise<number> {
+    const repository = this.repository.getRepository();
+    const drafts = await repository.find({
+      where: {
+        storeId,
+        status: IncomeExpenseStatus.DRAFT,
+        createdAt: LessThanOrEqual(createdBefore),
+        deletedAt: IsNull(),
+      } as any,
+    });
+    if (!drafts.length) return 0;
+
+    await repository
+      .createQueryBuilder()
+      .update(IncomeExpense)
+      .set({ status: IncomeExpenseStatus.CANCELED })
+      .where("storeId = :storeId", { storeId })
+      .andWhere("status = :status", { status: IncomeExpenseStatus.DRAFT })
+      .andWhere('"createdAt" <= :createdBefore', { createdBefore })
+      .andWhere('"deletedAt" IS NULL')
+      .execute();
+
+    for (const item of drafts) {
+      await this.debtService.removeIncomeExpenseReferences(item.id);
+    }
+    return drafts.length;
   }
 
   async getFilterItemsAndTotal(

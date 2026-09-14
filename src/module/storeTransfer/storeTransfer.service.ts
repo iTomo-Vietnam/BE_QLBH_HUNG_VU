@@ -18,6 +18,9 @@ import { ATTRIBUTE_TYPES } from "../attribute/attribute.types";
 import { AttributeRepository } from "../attribute/attribute.repository";
 import { STORE_TYPES } from "../store/store.types";
 import { StoreRepository } from "../store/store.repository";
+import { NOTIFICATION_TYPES } from "../notification/notification.types";
+import { NotificationService } from "../notification/notification.service";
+import { ActionType, NotificationType } from "@/database/models/Notification";
 
 type TransferWithActions = StoreTransfer & { _actions?: ActionMap };
 
@@ -35,6 +38,8 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     @inject(ATTRIBUTE_TYPES.AttributeRepository) private attributeRepository: AttributeRepository,
     @inject(STORE_TYPES.StoreRepository) private storeRepository: StoreRepository,
     @inject(INVENTORY_TYPES.InventoryRecalculateService) private inventory: InventoryRecalculateService,
+    @inject(NOTIFICATION_TYPES.NotificationService)
+    private notificationService: NotificationService,
   ) {
     super();
     this.repository = repository;
@@ -295,12 +300,51 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       throw new BadRequestError("Không thể thao tác với dữ liệu của cửa hàng khác");
   }
 
+  private async notifyTransferPending(
+    transfer: StoreTransfer,
+    status: StoreTransferStatus,
+  ): Promise<void> {
+    const targetStoreId =
+      status === StoreTransferStatus.EXPORTED
+        ? transfer.toStoreId
+        : status === StoreTransferStatus.PLANNED
+          ? transfer.fromStoreId
+          : null;
+    if (!targetStoreId) return;
+
+    const userIds = await this.notificationService.findUsersWithPermission(
+      targetStoreId,
+      "storeTransfer",
+      "complete",
+    );
+    if (!userIds.length) return;
+
+    const message =
+      status === StoreTransferStatus.EXPORTED
+        ? `Phiếu chuyển kho ${transfer.code} đã xuất hàng, đang chờ cửa hàng nhận nhập kho`
+        : `Phiếu chuyển kho ${transfer.code} đang chờ cửa hàng xuất hàng`;
+    await this.notificationService.createNotificationByEntity(
+      {
+        id: transfer.id,
+        code: transfer.code,
+        entityType: "StoreTransfer",
+        storeId: targetStoreId,
+        fromStoreId: transfer.fromStoreId,
+        toStoreId: transfer.toStoreId,
+        message,
+      },
+      NotificationType.STORE_TRANSFER,
+      status === StoreTransferStatus.EXPORTED ? ActionType.COMPLETE : ActionType.PENDING,
+      userIds,
+    );
+  }
+
   private async transition(
     id: string,
     nextStatus: StoreTransferStatus,
     req?: RequestContext,
   ): Promise<StoreTransfer | null> {
-    return withTransaction(async (em) => {
+    const updated = await withTransaction(async (em) => {
       const repository = this.repository.getRepository(em);
       const current = await repository.findOne({ where: { id }, relations: { lines: true } });
       if (!current) throw new Error("store.transfer.not_found");
@@ -374,6 +418,8 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       );
       return updated;
     });
+    if (updated) await this.notifyTransferPending(updated, nextStatus);
+    return updated;
   }
 
   async exportTransfer(id: string, req?: RequestContext): Promise<StoreTransfer | null> {
@@ -390,6 +436,7 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
 
   async actionAfterCreate(data: StoreTransfer, manager: EntityManager): Promise<void> {
     await this.replay(data.id, manager);
+    await this.notifyTransferPending(data, StoreTransferStatus.PLANNED);
   }
 
   async actionAfterUpdate(data: StoreTransfer, manager: EntityManager): Promise<void> {

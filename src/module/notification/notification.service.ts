@@ -44,7 +44,10 @@ export class NotificationService extends BaseService<Notification> {
     try {
       const notiData = getNotificationData(data, type, action);
       const title = notiData.title || "";
-      const body = this.interpolateTemplate(notiData.body || "", data);
+      const body =
+        typeof data?.message === "string" && data.message.trim()
+          ? data.message.trim()
+          : this.interpolateTemplate(notiData.body || "", data);
 
       const notificationData: Partial<Notification> = {
         type,
@@ -56,10 +59,42 @@ export class NotificationService extends BaseService<Notification> {
         data: data,
       };
 
-      await this.createNotification(notificationData, userIds);
+      await this.createNotification(notificationData, [...new Set(userIds)]);
     } catch (error) {
       logger.error("Error creating notification by entity:", error);
     }
+  }
+
+  /** Tạo thông báo một lần cho mỗi người nhận theo khóa nghiệp vụ. */
+  async createNotificationByEntityOnce(
+    data: any,
+    type: NotificationType,
+    action: ActionType,
+    userIds: string[],
+    dedupeKey: string,
+  ): Promise<void> {
+    const recipientIds = [...new Set(userIds.filter(Boolean))];
+    if (!recipientIds.length) return;
+
+    const existing = await this.repository
+      .getRepository()
+      .createQueryBuilder("notification")
+      .select("notification.userId", "userId")
+      .where("notification.type = :type", { type })
+      .andWhere("notification.action = :action", { action })
+      .andWhere("notification.data ->> 'dedupeKey' = :dedupeKey", { dedupeKey })
+      .andWhere("notification.userId IN (:...recipientIds)", { recipientIds })
+      .getRawMany();
+    const existingIds = new Set(existing.map((item) => item.userId));
+    const pendingIds = recipientIds.filter((id) => !existingIds.has(id));
+    if (!pendingIds.length) return;
+
+    await this.createNotificationByEntity(
+      { ...data, dedupeKey },
+      type,
+      action,
+      pendingIds,
+    );
   }
 
   /**
@@ -173,11 +208,19 @@ export class NotificationService extends BaseService<Notification> {
         `
         SELECT DISTINCT su."userId"
         FROM store_users su
-        INNER JOIN roles r ON r.id = su."roleId" AND r."deletedAt" IS NULL
+        INNER JOIN users u ON u.id = su."userId"
+          AND u."deletedAt" IS NULL
+          AND u."isActive" = true
+        LEFT JOIN roles r ON r.id = su."roleId" AND r."deletedAt" IS NULL
         WHERE su."storeId" = $1
           AND su."deletedAt" IS NULL
-          AND r.permissions->>$2 IS NOT NULL
-          AND r.permissions->$2 ? $3
+          AND (
+            u."username" = 'admin'
+            OR (
+              r.permissions->>$2 IS NOT NULL
+              AND r.permissions->$2 ? $3
+            )
+          )
       `,
         [storeId, module, permission],
       );

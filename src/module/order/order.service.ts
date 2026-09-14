@@ -3,6 +3,7 @@ import { DeepPartial, EntityManager } from "typeorm";
 import { withTransaction } from "@/shared/base/TransactionManager";
 import { BaseService } from "@/shared/base/BaseService";
 import { ActionValue, RequestContext } from "@/shared/types/interfaces";
+import type { Module } from "@/shared/middleware/permission.middleware";
 import { generateCode } from "@/shared/utils/code.utils";
 import {
   IncomeExpense,
@@ -35,6 +36,9 @@ import { FUND_TYPES } from "@/module/fund/fund.types";
 import { FundRepository } from "@/module/fund/fund.repository";
 import type { OrderHistoryQueryDto } from "./order.validator";
 import { BadRequestError } from "@/shared/types/errors";
+import { NOTIFICATION_TYPES } from "@/module/notification/notification.types";
+import { NotificationService } from "@/module/notification/notification.service";
+import { ActionType, NotificationType } from "@/database/models/Notification";
 
 const calculateRateAmount = (
   baseAmount: number,
@@ -100,6 +104,8 @@ export class OrderService extends BaseService<Order> {
     private debtService: DebtRecalculateService,
     @inject(FUND_TYPES.Repository)
     private fundRepository: FundRepository,
+    @inject(NOTIFICATION_TYPES.NotificationService)
+    private notificationService: NotificationService,
   ) {
     super();
     this.repository = repository;
@@ -314,6 +320,7 @@ export class OrderService extends BaseService<Order> {
     req?: RequestContext,
   ): Promise<void> {
     if (data.incomeExpenses === undefined) return;
+    const sourceIncomeExpenses = data.incomeExpenses;
     const storeId = req?.storeContext?.storeId || data.storeId;
 
     const isIncome =
@@ -398,6 +405,12 @@ export class OrderService extends BaseService<Order> {
     }
 
     data.incomeExpenses = prepared;
+    // BaseService keeps a shallow copy of the input for actionAfterCreate.
+    // Keep that shared array in sync so payment codes/categories are not
+    // generated a second time after the order receives its id.
+    if (Array.isArray(sourceIncomeExpenses)) {
+      sourceIncomeExpenses.splice(0, sourceIncomeExpenses.length, ...prepared);
+    }
   }
 
   private getDefaultIncomeExpenseCategory(
@@ -625,6 +638,9 @@ export class OrderService extends BaseService<Order> {
     await this.validateSaleReturn(data, manager);
     await this.attachInfo(data, manager);
     await this.prepareIncomeExpenses(data, manager, req);
+    // Payment rows are persisted explicitly after the order has an id.
+    // Avoid relying on TypeORM cascade ordering for the nested relation.
+    delete (data as any).incomeExpenses;
   }
 
   async validateBeforeUpdate(
@@ -740,18 +756,12 @@ export class OrderService extends BaseService<Order> {
     inputData?: DeepPartial<Order>,
   ): Promise<void> {
     // `repository.create` may not keep the nested relation on the returned
-    // entity even though the request was normalized successfully. Prefer the
-    // normalized entity, but fall back to the original request so a payment
-    // can never silently disappear during create.
-    let incomeExpenses = data.incomeExpenses;
-    if (!incomeExpenses?.length && inputData?.incomeExpenses?.length) {
-      const normalizedData = {
-        ...data,
-        incomeExpenses: inputData.incomeExpenses,
-      } as DeepPartial<Order>;
-      await this.prepareIncomeExpenses(normalizedData, manager, req);
-      incomeExpenses = normalizedData.incomeExpenses as IncomeExpense[];
-    }
+    // entity because payment rows are saved explicitly below. BaseService's
+    // shallow input copy shares the normalized payment array from validation.
+    const incomeExpenses =
+      inputData?.incomeExpenses !== undefined
+        ? inputData.incomeExpenses
+        : data.incomeExpenses;
     if (incomeExpenses !== undefined) {
       await this.replaceOrderIncomeExpenses(
         data.id,
@@ -762,6 +772,56 @@ export class OrderService extends BaseService<Order> {
     await this.debtService.syncForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, data.status, manager);
     await this.recalculate(data, manager);
+    await this.notifyCompletionPending(data);
+  }
+
+  private getCompletionModule(type?: OrderType): Module | null {
+    switch (type) {
+      case OrderType.SALE:
+        return "sale";
+      case OrderType.SALE_RETURN:
+        return "saleReturn";
+      case OrderType.PURCHASE:
+        return "purchase";
+      case OrderType.PURCHASE_RETURN:
+        return "purchaseReturn";
+      default:
+        return null;
+    }
+  }
+
+  private async notifyCompletionPending(data: Order): Promise<void> {
+    if (data.status !== OrderStatus.DRAFT || !data.id || !data.storeId) return;
+    const module = this.getCompletionModule(data.type);
+    if (!module) return;
+
+    const userIds = await this.notificationService.findUsersWithPermission(
+      data.storeId,
+      module,
+      "complete",
+    );
+    const recipients = userIds.filter((userId) => userId !== data.creatorId);
+    if (!recipients.length) return;
+
+    const labels: Record<OrderType, string> = {
+      [OrderType.SALE]: "đơn bán",
+      [OrderType.SALE_RETURN]: "đơn trả",
+      [OrderType.PURCHASE]: "đơn nhập",
+      [OrderType.PURCHASE_RETURN]: "đơn trả hàng nhập",
+    };
+    await this.notificationService.createNotificationByEntity(
+      {
+        id: data.id,
+        code: data.code,
+        storeId: data.storeId,
+        entityType: "Order",
+        orderType: data.type,
+        message: `Có ${labels[data.type]} ${data.code} chưa xác nhận hoàn thành`,
+      },
+      NotificationType.ORDER,
+      ActionType.PENDING,
+      recipients,
+    );
   }
   async actionAfterUpdate(
     data: Order,
@@ -868,5 +928,16 @@ export class OrderService extends BaseService<Order> {
       undefined,
       req,
     );
+  }
+
+  /** Hủy phiếu nháp từ scheduler, không phụ thuộc user session. */
+  async cancelDraftForSystem(id: string, storeId: string): Promise<Order | null> {
+    return this.cancel(id, {
+      storeContext: {
+        storeId,
+        companyName: "",
+        companyCode: "",
+      },
+    });
   }
 }
