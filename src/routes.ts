@@ -80,6 +80,10 @@ import { DASHBOARD_TYPES } from "@/module/dashboard/dashboard.types";
 import { DashboardRouter } from "@/module/dashboard/dashboard.route";
 import { LOG_TYPES, LogRouter } from "./module/log";
 import { ANALYSIS_TYPES, AnalysisRouter } from "@/module/analysis";
+import { TRANSFER_NOTE_TYPES } from "@/module/transferNote/transferNote.types";
+import { TransferNoteRouter } from "@/module/transferNote/transferNote.route";
+import { DAILY_REPORT_TYPES } from "@/module/dailyReport/dailyReport.types";
+import { DailyReportRouter } from "@/module/dailyReport/dailyReport.route";
 
 const router = Router();
 router.use(companyResolver);
@@ -165,6 +169,14 @@ router.use(
 router.use(
   "/income-expense",
   container.get<IncomeExpenseRouter>(INCOME_EXPENSE_TYPES.Router).getRouter(),
+);
+router.use(
+  "/transfer-note",
+  container.get<TransferNoteRouter>(TRANSFER_NOTE_TYPES.Router).getRouter(),
+);
+router.use(
+  "/daily-report",
+  container.get<DailyReportRouter>(DAILY_REPORT_TYPES.Router).getRouter(),
 );
 router.use("/fund", container.get<FundRouter>(FUND_TYPES.Router).getRouter());
 router.use(

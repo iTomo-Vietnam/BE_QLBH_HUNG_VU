@@ -5,7 +5,7 @@ import { JwtPayload } from "../types/interfaces";
 
 /** Permission keys are deliberately limited to the current model/module set. */
 export const MODULES = [
-  "report", // Báo cáo
+  "dashboard", // Tổng quan
   "analysis", // Phân tích
   "reports", // Báo cáo chi tiết
   "debtReport", // Báo cáo công nợ
@@ -26,6 +26,8 @@ export const MODULES = [
 
   // Tài chính & kế toán
   "incomeExpense", // Thu chi
+  "transferNote", // Ghi chú chuyển khoản
+  "dailyReport", // Báo cáo hằng ngày
   "fund", // Quỹ
   "fundAdjustment", // Điều chỉnh số dư quỹ
   "fundTransfer", // Chuyển quỹ
@@ -60,7 +62,7 @@ export type Permission = (typeof PERMISSIONS)[number];
 export type PermissionStructure = { [key in Module]?: Permission[] };
 
 export const ReadOnlyModules: Module[] = [
-  "report",
+  "dashboard",
   "analysis",
   "reports",
   "debtReport",
@@ -110,11 +112,11 @@ export const checkPermission = (
   const storeId = req.storeContext?.storeId;
   const permissions = storeId
     ? req.storePermissions?.[storeId]?.permissions || {}
-    : ((req as any).permissions || {}) as PermissionStructure;
+    : (((req as any).permissions || {}) as PermissionStructure);
   const hasPermission = (value: PermissionStructure) =>
     Boolean(
       value[module]?.includes(permission) ||
-        (permission === "read" && checkPermissionFallback(value, module)),
+      (permission === "read" && checkPermissionFallback(value, module)),
     );
 
   if (hasPermission(permissions)) return true;
@@ -136,7 +138,8 @@ export const getAvailableStoreIds = (
     .filter((scope) =>
       Boolean(
         scope.permissions[module]?.includes(permission) ||
-          (permission === "read" && checkPermissionFallback(scope.permissions, module)),
+        (permission === "read" &&
+          checkPermissionFallback(scope.permissions, module)),
       ),
     )
     .map((scope) => scope.storeId);
@@ -147,8 +150,7 @@ export const permissionMiddleware =
   (req: Request, _res: Response, next: NextFunction): void => {
     try {
       const jwtUser = (req as any).user as JwtPayload | undefined;
-      if (!jwtUser?.userId)
-        throw new UnauthorizedError("Yêu cầu đăng nhập");
+      if (!jwtUser?.userId) throw new UnauthorizedError("Yêu cầu đăng nhập");
       const isAdmin = AuthUtils.isAdmin(jwtUser);
       const resolved = typeof module === "function" ? module(req) : module;
       const allowed = isAdmin

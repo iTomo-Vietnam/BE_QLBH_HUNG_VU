@@ -19,7 +19,7 @@ export class DashboardRouter {
     @inject(DASHBOARD_TYPES.Controller)
     controller: DashboardController,
   ) {
-    this.router.use(permissionMiddleware("report", "read"));
+    this.router.use(permissionMiddleware("dashboard", "read"));
     this.router.get(
       "/metrics",
       zodValidate(DashboardMetricsQuerySchema, "query"),

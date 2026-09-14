@@ -332,14 +332,7 @@ export class OrderService extends BaseService<Order> {
     const orderAmount =
       data.type === OrderType.SALE_RETURN
         ? Math.abs(Number(data.settlementAmount || 0))
-        : Math.max(
-            0,
-            Number(
-              isIncome && data.returnTotalAmount != null
-                ? data.returnTotalAmount
-                : data.totalAmount,
-            ) || 0,
-          );
+        : Math.max(0, Number(data.totalAmount || 0));
 
     const defaultCategory =
       data.type === OrderType.SALE_RETURN && isIncome

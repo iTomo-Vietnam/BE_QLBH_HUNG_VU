@@ -109,7 +109,7 @@ export class AttributeRepository extends BaseRepository<Attribute> {
       });
     }
 
-    if (storeId) {
+    if (storeId && type === AttributeType.LOCATION) {
       qb.andWhere(
         `(${alias}.storeId = :attributeStoreId OR ${alias}.storeId IS NULL)`,
         {

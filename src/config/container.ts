@@ -35,6 +35,8 @@ import { excelModule } from "@/module/excel";
 import { dashboardModule } from "@/module/dashboard";
 import { logModule } from "@/module/log";
 import { analysisModule } from "@/module/analysis";
+import { transferNoteModule } from "@/module/transferNote";
+import { dailyReportModule } from "@/module/dailyReport";
 
 // ================== Container Setup ====================
 export const container = new Container();
@@ -76,4 +78,6 @@ container.load(
   dashboardModule,
   logModule,
   analysisModule,
+  transferNoteModule,
+  dailyReportModule,
 );

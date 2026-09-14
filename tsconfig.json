@@ -24,6 +24,9 @@
     "typeRoots": ["./node_modules/@types", "./src/shared/types"],
     "types": ["node", "express"]
   },
+  "ts-node": {
+    "files": true
+  },
   "include": [
     "src/**/*",
     "src/shared/types/**/*.d.ts",

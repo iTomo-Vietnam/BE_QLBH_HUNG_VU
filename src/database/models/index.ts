@@ -52,6 +52,11 @@ import { StoreUser } from "./store/StoreUser";
 import { InternalExport } from "./store/InternalExport";
 import { InternalExportLine } from "./store/InternalExportLine";
 import { OperationLog } from "./OperationLog";
+import { TransferNote, TransferNoteStatus } from "./TransferNote";
+import {
+  DailyReport,
+  DailyReportStatus,
+} from "./DailyReport";
 
 /** Single source of truth for TypeORM entities in the store-scoped model. */
 export const entities = [
@@ -89,6 +94,8 @@ export const entities = [
   InternalExport,
   InternalExportLine,
   OperationLog,
+  TransferNote,
+  DailyReport,
 ];
 
 export {
@@ -155,4 +162,8 @@ export {
   OrderLine,
   ReturnOrderTypes,
   OperationLog,
+  TransferNote,
+  TransferNoteStatus,
+  DailyReport,
+  DailyReportStatus,
 };
