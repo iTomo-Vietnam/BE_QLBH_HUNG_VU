@@ -32,15 +32,6 @@ export class UserService extends BaseService<User> {
     req?: RequestContext,
   ): Promise<void> {
     data.password = await AuthUtils.hashPassword(data.password || "123456");
-    for (const storeUser of (data.storeUsers || []) as DeepPartial<StoreUser>[]) {
-      if (!storeUser.storeId || storeUser.storeId !== req?.storeContext?.storeId)
-        throw new BadRequestError("Người dùng chỉ được gán vào cửa hàng đang thao tác");
-      if (storeUser.roleId) {
-        const role = await manager.getRepository(Role).findOne({ where: { id: storeUser.roleId } });
-        if (!role || role.storeId !== storeUser.storeId)
-          throw new BadRequestError("Vai trò không thuộc cửa hàng được gán");
-      }
-    }
   }
 
   async validateBeforeUpdate(
@@ -65,11 +56,6 @@ export class UserService extends BaseService<User> {
 
     for (const storeUser of storeUsers) {
       if (!storeUser.storeId) throw new BadRequestError("Cửa hàng là bắt buộc");
-      if (storeUser.roleId) {
-        const role = await manager.getRepository(Role).findOne({ where: { id: storeUser.roleId } });
-        if (!role || role.storeId !== storeUser.storeId)
-          throw new BadRequestError("Vai trò không thuộc cửa hàng được gán");
-      }
       storeIds.add(storeUser.storeId);
     }
 
@@ -79,24 +65,26 @@ export class UserService extends BaseService<User> {
 
     for (const storeUser of storeUsers) {
       const current = existingByStoreId.get(storeUser.storeId!);
-      if (storeUser.storeId !== req?.storeContext?.storeId) {
-        if (!current || current.roleId !== (storeUser.roleId ?? null))
-          throw new BadRequestError("Chỉ được thay đổi phân quyền tại cửa hàng đang thao tác");
-        continue;
-      }
       if (current) {
-        await repository.update(current.id, { roleId: storeUser.roleId ?? null });
-      } else {
-        await repository.save(repository.create({
-          userId,
-          storeId: storeUser.storeId,
+        await repository.update(current.id, {
           roleId: storeUser.roleId ?? null,
-        }));
+        });
+      } else {
+        await repository.save(
+          repository.create({
+            userId,
+            storeId: storeUser.storeId,
+            roleId: storeUser.roleId ?? null,
+          }),
+        );
       }
     }
 
     for (const storeUser of existing) {
-      if (!storeIds.has(storeUser.storeId) && storeUser.storeId === req?.storeContext?.storeId)
+      if (
+        !storeIds.has(storeUser.storeId) &&
+        storeUser.storeId === req?.storeContext?.storeId
+      )
         await repository.delete(storeUser.id);
     }
   }
@@ -120,7 +108,10 @@ export class UserService extends BaseService<User> {
     delete payload.notifications;
 
     // The FE sends a masked password when it is unchanged.
-    if (typeof payload.password === "string" && /^\*+$/.test(payload.password)) {
+    if (
+      typeof payload.password === "string" &&
+      /^\*+$/.test(payload.password)
+    ) {
       delete payload.password;
     }
 

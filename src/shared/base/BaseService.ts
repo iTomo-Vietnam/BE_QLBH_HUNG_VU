@@ -191,7 +191,10 @@ export abstract class BaseService<T extends BaseEntity> {
       ),
     );
     entities.forEach((entity) =>
-      this.restrictCrossStoreActions(entity as T & { _actions?: ActionMap }, req),
+      this.restrictCrossStoreActions(
+        entity as T & { _actions?: ActionMap },
+        req,
+      ),
     );
   }
 
@@ -206,7 +209,28 @@ export abstract class BaseService<T extends BaseEntity> {
     const reason = currentStoreId
       ? "Không thể thao tác với dữ liệu của cửa hàng khác"
       : "Vui lòng chọn cửa hàng đang thao tác";
-    for (const key of ["update", "delete", "assign", "unassign", "confirm", "cancelConfirm", "cancel", "approve", "reject", "submit", "complete", "archive", "restore", "updateMode", "start", "arrive", "accept", "pay", "import", "remind"] as const) {
+    for (const key of [
+      "update",
+      "delete",
+      "assign",
+      "unassign",
+      "confirm",
+      "cancelConfirm",
+      "cancel",
+      "approve",
+      "reject",
+      "submit",
+      "complete",
+      "archive",
+      "restore",
+      "updateMode",
+      "start",
+      "arrive",
+      "accept",
+      "pay",
+      "import",
+      "remind",
+    ] as const) {
       if (entity._actions?.[key]) entity._actions[key] = { can: false, reason };
     }
   }
@@ -504,9 +528,14 @@ export abstract class BaseService<T extends BaseEntity> {
       if (
         Object.prototype.hasOwnProperty.call(data, "storeId") &&
         (data as any).storeId !== (entity as any).storeId &&
-        !(isFund && ((data as any).storeId == null || (entity as any).storeId == null))
+        !(
+          isFund &&
+          ((data as any).storeId == null || (entity as any).storeId == null)
+        )
       ) {
-        throw new BadRequestError("Không thể chuyển dữ liệu sang cửa hàng khác");
+        throw new BadRequestError(
+          "Không thể chuyển dữ liệu sang cửa hàng khác",
+        );
       }
 
       // perform unique check if configured (exclude self by providing id)
@@ -612,7 +641,11 @@ export abstract class BaseService<T extends BaseEntity> {
   ): Promise<boolean> {
     const storeId = req?.storeContext?.storeId;
     const runWithManager = async (manager: EntityManager) => {
-      const entities = await this.repository.findByIds(ids, manager, req as any);
+      const entities = await this.repository.findByIds(
+        ids,
+        manager,
+        req as any,
+      );
       for (const entity of entities) {
         if ((entity as any).storeId && !storeId) {
           throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
@@ -764,7 +797,6 @@ export abstract class BaseService<T extends BaseEntity> {
             const val = item[field];
             return val != null && f[field] === val;
           });
-
           if (exists)
             errors.push({
               field: String(field),

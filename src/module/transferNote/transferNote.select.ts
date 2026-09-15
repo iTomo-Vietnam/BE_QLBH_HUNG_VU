@@ -7,6 +7,7 @@ export const TransferNoteSelectList: FindOptionsSelect<TransferNote> = {
   storeId: true,
   occurredAt: true,
   referenceCode: true,
+  note: true,
   fundId: true,
   fundSnapshot: true,
   amount: true,

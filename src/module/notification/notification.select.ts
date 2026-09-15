@@ -25,6 +25,7 @@ export const NotificationSelectList: FindOptionsSelect<Notification> = {
   action: true,
   title: true,
   body: true,
+  data: true,
   isRead: true,
   entityType: true,
   entityId: true,

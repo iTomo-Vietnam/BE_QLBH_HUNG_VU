@@ -6,7 +6,6 @@ import { Attribute, AttributeType } from "@/database/models/Attribute";
 import { BaseService } from "@/shared/base/BaseService";
 import { DebtSide, nullUuidMap } from "@/shared/constants/enum";
 import { FilterItem, RequestContext } from "@/shared/types/interfaces";
-import { generateCode } from "@/shared/utils/code.utils";
 import { PARTNER_TYPES } from "../partner/partner.types";
 import { PartnerRepository } from "../partner/partner.repository";
 import { DebtAdjustmentRepository } from "./debtAdjustment.repository";
@@ -32,7 +31,6 @@ export class DebtAdjustmentService extends BaseService<DebtAdjustment> {
     manager: EntityManager,
     req?: RequestContext,
   ): Promise<void> {
-    if (!data.code) data.code = await generateCode("debtadjustment");
     this.setDelta(data);
     await this.attachPartner(data, manager, data.side);
   }
@@ -83,34 +81,60 @@ export class DebtAdjustmentService extends BaseService<DebtAdjustment> {
       .addGroupBy("debtAdjustmentPartnerGroupSummary.name");
 
     if (partnerIds.length) {
-      qb.andWhere("debtAdjustment.partnerId IN (:...debtAdjustmentSummaryPartnerIds)", {
-        debtAdjustmentSummaryPartnerIds: partnerIds,
-      });
+      qb.andWhere(
+        "debtAdjustment.partnerId IN (:...debtAdjustmentSummaryPartnerIds)",
+        {
+          debtAdjustmentSummaryPartnerIds: partnerIds,
+        },
+      );
     }
 
     const addDateCondition = (key: string, operator: string, param: string) => {
       const rawValue = (query as Record<string, unknown>)[key];
-      if (rawValue === undefined || rawValue === null || rawValue === "") return;
-      const value = rawValue instanceof Date ? new Date(rawValue) : new Date(String(rawValue));
+      if (rawValue === undefined || rawValue === null || rawValue === "")
+        return;
+      const value =
+        rawValue instanceof Date
+          ? new Date(rawValue)
+          : new Date(String(rawValue));
       if (Number.isNaN(value.getTime())) return;
-      if (operator === "<=" && typeof rawValue === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawValue)) {
+      if (
+        operator === "<=" &&
+        typeof rawValue === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+      ) {
         value.setUTCHours(23, 59, 59, 999);
       }
-      qb.andWhere(`debtAdjustment.occurredAt ${operator} :${param}`, { [param]: value });
+      qb.andWhere(`debtAdjustment.occurredAt ${operator} :${param}`, {
+        [param]: value,
+      });
     };
 
     addDateCondition("startAt", ">=", "debtAdjustmentSummaryStartAt");
     addDateCondition("endAt", "<=", "debtAdjustmentSummaryEndAt");
-    addDateCondition("occurredAtGte", ">=", "debtAdjustmentSummaryOccurredAtGte");
-    addDateCondition("occurredAtLte", "<=", "debtAdjustmentSummaryOccurredAtLte");
+    addDateCondition(
+      "occurredAtGte",
+      ">=",
+      "debtAdjustmentSummaryOccurredAtGte",
+    );
+    addDateCondition(
+      "occurredAtLte",
+      "<=",
+      "debtAdjustmentSummaryOccurredAtLte",
+    );
 
     for (const suffix of ["Gte", "Gt", "Eq", "Lte", "Lt"] as const) {
       const value = (query as Record<string, unknown>)[`deltaAmount${suffix}`];
       if (value === undefined || value === null || value === "") continue;
-      const operator = { Gte: ">=", Gt: ">", Eq: "=", Lte: "<=", Lt: "<" }[suffix];
-      qb.andWhere(`debtAdjustment.deltaAmount ${operator} :debtAdjustmentSummaryDelta${suffix}`, {
-        [`debtAdjustmentSummaryDelta${suffix}`]: value,
-      });
+      const operator = { Gte: ">=", Gt: ">", Eq: "=", Lte: "<=", Lt: "<" }[
+        suffix
+      ];
+      qb.andWhere(
+        `debtAdjustment.deltaAmount ${operator} :debtAdjustmentSummaryDelta${suffix}`,
+        {
+          [`debtAdjustmentSummaryDelta${suffix}`]: value,
+        },
+      );
     }
 
     const rows = await qb.getRawMany<{
@@ -142,7 +166,10 @@ export class DebtAdjustmentService extends BaseService<DebtAdjustment> {
     return { ...totals, filterItems };
   }
 
-  private setDelta(data: DeepPartial<DebtAdjustment>, current?: DebtAdjustment) {
+  private setDelta(
+    data: DeepPartial<DebtAdjustment>,
+    current?: DebtAdjustment,
+  ) {
     const expectedAmount = data.expectedAmount ?? current?.expectedAmount;
     const countedAmount = data.countedAmount ?? current?.countedAmount;
     if (expectedAmount == null || countedAmount == null) {
@@ -161,10 +188,11 @@ export class DebtAdjustmentService extends BaseService<DebtAdjustment> {
     await this.partnerRepository.attachInfo(data, manager);
     if (!data.partnerSnapshot) throw new Error("partner.not_found");
     const expectedType =
-      side === DebtSide.RECEIVABLE ? PartnerType.CUSTOMER : PartnerType.SUPPLIER;
+      side === DebtSide.RECEIVABLE
+        ? PartnerType.CUSTOMER
+        : PartnerType.SUPPLIER;
     if ((data.partnerSnapshot as any).type !== expectedType) {
       throw new Error("debtAdjustment.partner_invalid");
     }
   }
 }
-

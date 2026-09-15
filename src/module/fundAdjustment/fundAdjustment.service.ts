@@ -3,7 +3,6 @@ import { DeepPartial, EntityManager } from "typeorm";
 import { FundAdjustment } from "@/database/models/FundAdjustment";
 import { BaseService } from "@/shared/base/BaseService";
 import { RequestContext } from "@/shared/types/interfaces";
-import { generateCode } from "@/shared/utils/code.utils";
 import { FUND_TYPES } from "../fund/fund.types";
 import { FundRepository } from "../fund/fund.repository";
 import { FundAdjustmentRepository } from "./fundAdjustment.repository";
@@ -13,14 +12,20 @@ export class FundAdjustmentService extends BaseService<FundAdjustment> {
   protected repository: FundAdjustmentRepository;
   protected uniqueFields: (keyof FundAdjustment)[] = ["code"];
   constructor(
-    @inject(FUND_ADJUSTMENT_TYPES.Repository) repository: FundAdjustmentRepository,
+    @inject(FUND_ADJUSTMENT_TYPES.Repository)
+    repository: FundAdjustmentRepository,
     @inject(FUND_TYPES.Repository) private fundRepository: FundRepository,
-  ) { super(); this.repository = repository; }
-  async validateBeforeCreate(data: DeepPartial<FundAdjustment>, manager: EntityManager, req?: RequestContext): Promise<void> {
-    if (!data.code) data.code = await generateCode("fundadjustment");
-    if (!data.fundId) throw new Error("fund.required");
+  ) {
+    super();
+    this.repository = repository;
+  }
+  async validateBeforeCreate(
+    data: DeepPartial<FundAdjustment>,
+    manager: EntityManager,
+    req?: RequestContext,
+  ): Promise<void> {
     await this.fundRepository.attachInfo(data, manager);
-    if (!data.fundSnapshot) throw new Error("fund.not_found");
-    data.deltaAmount = Number(data.countedAmount || 0) - Number(data.expectedAmount || 0);
+    data.deltaAmount =
+      Number(data.countedAmount || 0) - Number(data.expectedAmount || 0);
   }
 }

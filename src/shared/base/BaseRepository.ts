@@ -368,7 +368,6 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
     }
 
     const metadata = repo.metadata;
-    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
     const accessibleStoreIds = req?.availableStoreIds;
     if (
       Array.isArray(accessibleStoreIds) &&
@@ -377,9 +376,7 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
       else {
         qb.andWhere(
-          allowsGlobalStoreScope
-            ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
-            : "entity.storeId IN (:...accessibleStoreIds)",
+          "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)",
           { accessibleStoreIds },
         );
       }
@@ -447,7 +444,6 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
 
     // Relations
     const accessibleStoreIds = req?.availableStoreIds;
-    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
     if (
       Array.isArray(accessibleStoreIds) &&
       repo.metadata.columns.some((column) => column.propertyName === "storeId")
@@ -455,9 +451,7 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
       else {
         qb.andWhere(
-          allowsGlobalStoreScope
-            ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
-            : "entity.storeId IN (:...accessibleStoreIds)",
+          "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)",
           { accessibleStoreIds },
         );
       }
@@ -672,8 +666,14 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       typeof addressFilterSource === "object"
     ) {
       const addressFilters = [
-        { key: "state", values: normalizeQueryArray((addressFilterSource as any).states) },
-        { key: "ward", values: normalizeQueryArray((addressFilterSource as any).wards) },
+        {
+          key: "state",
+          values: normalizeQueryArray((addressFilterSource as any).states),
+        },
+        {
+          key: "ward",
+          values: normalizeQueryArray((addressFilterSource as any).wards),
+        },
       ];
 
       for (const { key, values } of addressFilters) {
@@ -713,14 +713,15 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
         (col) => col.propertyName === "storeId",
       );
       if (hasStoreIdColumn) {
-        qb.andWhere((this.entityClass as any).name === "Fund"
-          ? "(entity.storeId IN (:...storeIds) OR entity.storeId IS NULL)"
-          : "entity.storeId IN (:...storeIds)", { storeIds });
+        qb.andWhere(
+          "(entity.storeId IN (:...storeIds) OR entity.storeId IS NULL)",
+          { storeIds },
+        );
       }
     }
 
-    const accessibleStoreIds = (options.moreQuery || options).accessibleStoreIds;
-    const allowsGlobalStoreScope = (this.entityClass as any).name === "Fund";
+    const accessibleStoreIds = (options.moreQuery || options)
+      .accessibleStoreIds;
     if (Array.isArray(accessibleStoreIds)) {
       const hasStoreIdColumn = entityMetadata.columns.some(
         (col) => col.propertyName === "storeId",
@@ -729,9 +730,7 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
         if (accessibleStoreIds.length === 0) qb.andWhere("1 = 0");
         else {
           qb.andWhere(
-            allowsGlobalStoreScope
-              ? "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)"
-              : "entity.storeId IN (:...accessibleStoreIds)",
+            "(entity.storeId IN (:...accessibleStoreIds) OR entity.storeId IS NULL)",
             { accessibleStoreIds },
           );
         }
@@ -869,7 +868,10 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       const dateField = String(options.timeField);
       const end = new Date(options.endAt);
       const rawEndAt = (options.moreQuery || options).endAt;
-      if (typeof rawEndAt === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawEndAt)) {
+      if (
+        typeof rawEndAt === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(rawEndAt)
+      ) {
         end.setUTCHours(23, 59, 59, 999);
       }
       qb.andWhere(`entity.${dateField} BETWEEN :start AND :end`, {
@@ -1131,8 +1133,7 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
       (column) => column.propertyName === "code",
     );
     if (hasCodeColumn && !(data as any).code) {
-      const storeId = (data as any).storeId;
-      const code = await generateCode(entityInfo.name, storeId);
+      const code = await generateCode((data as any).type ?? entityInfo.name);
       (data as any).code = code;
     }
     const entity = repo.create(data);
@@ -1215,7 +1216,9 @@ export abstract class BaseRepository<T extends ObjectLiteral> {
           (item as any).storeId !== storeId &&
           !(allowsGlobalStoreScope && (item as any).storeId == null)
         ) {
-          throw new BadRequestError("Dữ liệu phải thuộc cửa hàng đang thao tác");
+          throw new BadRequestError(
+            "Dữ liệu phải thuộc cửa hàng đang thao tác",
+          );
         }
       });
     }

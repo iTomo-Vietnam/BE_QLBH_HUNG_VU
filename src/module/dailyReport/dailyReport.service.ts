@@ -17,6 +17,7 @@ import {
   DailyReport,
   DailyReportStatus,
   DailyReportSummary,
+  DailyTransferNoteFundSummary,
   DailyTransferNoteSnapshot,
 } from "@/database/models/DailyReport";
 import {
@@ -179,7 +180,27 @@ export class DailyReportService extends BaseService<DailyReport> {
     expenses: DailyIncomeExpenseSnapshot[],
     debtIncome: DailyIncomeExpenseSnapshot[],
     transferNotes: DailyTransferNoteSnapshot[],
+    bankFunds: Fund[],
   ): DailyReportSummary {
+    const validTransferNotes = transferNotes.filter((item) => item.status === "valid");
+    const validAmountByFund = new Map<string, number>();
+    validTransferNotes.forEach((item) => {
+      validAmountByFund.set(
+        item.fundId,
+        (validAmountByFund.get(item.fundId) || 0) + item.amount,
+      );
+    });
+    const personalFunds: DailyTransferNoteFundSummary[] = bankFunds
+      .filter((fund) => fund.isPersonal)
+      .map((fund) => ({
+        fundId: fund.id,
+        fundSnapshot: this.fundSnapshot(fund),
+        amount: validAmountByFund.get(fund.id) || 0,
+      }));
+    const companyAmount = bankFunds
+      .filter((fund) => !fund.isPersonal)
+      .reduce((sum, fund) => sum + (validAmountByFund.get(fund.id) || 0), 0);
+
     return {
       orderCount: orders.length,
       orderTotalAmount: orders.reduce((sum, item) => sum + item.totalAmount, 0),
@@ -197,6 +218,8 @@ export class DailyReportService extends BaseService<DailyReport> {
       transferNoteInvalidAmount: transferNotes
         .filter((item) => item.status !== "valid")
         .reduce((sum, item) => sum + item.amount, 0),
+      transferNotePersonalAmounts: personalFunds,
+      transferNoteCompanyAmount: companyAmount,
     };
   }
 
@@ -258,6 +281,15 @@ export class DailyReportService extends BaseService<DailyReport> {
       .orderBy('"transferNote"."occurredAt"', "ASC")
       .getMany();
 
+    const bankFunds = await em.getRepository(Fund).find({
+      where: {
+        storeId,
+        type: FundType.BANK,
+        isActive: true,
+        deletedAt: IsNull(),
+      } as any,
+    });
+
     const orderSnapshots = orders.map((item) => this.toOrderSnapshot(item));
     const expenseSnapshots = incomeExpenses
       .filter((item) => item.type === IncomeExpenseType.EXPENSE)
@@ -278,6 +310,7 @@ export class DailyReportService extends BaseService<DailyReport> {
         expenseSnapshots,
         debtIncomeSnapshots,
         transferNoteSnapshots,
+        bankFunds,
       ),
     };
   }

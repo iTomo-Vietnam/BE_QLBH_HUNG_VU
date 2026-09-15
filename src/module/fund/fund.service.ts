@@ -1,5 +1,5 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager, IsNull } from "typeorm";
+import { DeepPartial, EntityManager } from "typeorm";
 import { Fund, FundType } from "@/database/models/Fund";
 import { FundAdjustment } from "@/database/models/FundAdjustment";
 import { BaseService } from "@/shared/base/BaseService";
@@ -10,65 +10,6 @@ import { FundRepository } from "./fund.repository";
 import { FUND_TYPES } from "./fund.types";
 import { FUND_TRANSACTION_TYPES } from "../fundTransaction/fundTransaction.types";
 import { FundTransactionService } from "../fundTransaction/fundTransaction.service";
-
-/**
- * Bổ sung quỹ tiền mặt mặc định cho một cửa hàng.
- *
- * Hàm này dùng được cả trong service tạo cửa hàng và seeder để backfill các
- * cửa hàng cũ. Nếu cửa hàng đã có quỹ tiền mặt thì giữ lại quỹ hiện có và chỉ
- * đặt nó làm mặc định khi chưa có quỹ mặc định nào.
- */
-export async function ensureDefaultCashFund(
-  storeId: string,
-  storeCode: string,
-  manager: EntityManager,
-): Promise<Fund> {
-  const repository = manager.getRepository(Fund);
-  const cashFunds = await repository.find({
-    where: {
-      storeId,
-      type: FundType.CASH,
-      deletedAt: IsNull(),
-    } as any,
-    order: { isDefault: "DESC", createdAt: "ASC" },
-  });
-
-  const existing = cashFunds[0];
-  if (existing) {
-    if (!existing.isDefault) {
-      await repository.update(existing.id, { isDefault: true });
-      existing.isDefault = true;
-    }
-    return existing;
-  }
-
-  const normalizedStoreCode = storeCode
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 21);
-  const preferredCode = normalizedStoreCode
-    ? `TM-${normalizedStoreCode}`
-    : await generateCode("fund", storeId);
-  const codeConflict = await repository.findOne({
-    where: { code: preferredCode, storeId, deletedAt: IsNull() } as any,
-  });
-  const code = codeConflict
-    ? await generateCode("fund", storeId)
-    : preferredCode;
-
-  return repository.save(
-    repository.create({
-      code,
-      name: "Tiền mặt",
-      type: FundType.CASH,
-      storeId,
-      isPersonal: false,
-      isDefault: true,
-      isActive: true,
-    }),
-  );
-}
 
 @injectable()
 export class FundService extends BaseService<Fund> {
@@ -111,11 +52,6 @@ export class FundService extends BaseService<Fund> {
     // isDefault chỉ được thiết lập bởi seed/backfill cho quỹ tiền mặt mặc định.
     // Không cho phép API tạo mới tự gán hoặc thay đổi trạng thái này.
     delete data.isDefault;
-
-    if (!data.code) {
-      data.code = await generateCode("fund", data.storeId ?? undefined);
-    }
-
   }
 
   async validateBeforeUpdate(
@@ -209,7 +145,6 @@ export class FundService extends BaseService<Fund> {
         }),
       );
     }
-
   }
 
   private getBalanceOffsetAt(req?: RequestContext): Date {

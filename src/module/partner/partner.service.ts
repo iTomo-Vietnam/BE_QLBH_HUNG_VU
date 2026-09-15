@@ -8,7 +8,6 @@ import { PARTNER_TYPES } from "./partner.types";
 import { PartnerRepository } from "./partner.repository";
 import { PartnerContactRepository } from "../partnerContact/partnerContact.repository";
 import { PARTNER_CONTACT_TYPES } from "../partnerContact/partnerContact.types";
-import { generateCode } from "@/shared/utils/code.utils";
 import { PartnerQueryDto } from "./partner.validator";
 import { DEBT_TYPES } from "../debt/debt.types";
 import { DebtService } from "../debt/debt.service";
@@ -78,10 +77,6 @@ export class PartnerService extends BaseService<Partner> {
       data.dob = null;
     }
 
-    if (!data.code) {
-      data.code = await generateCode(data.type || "partner");
-    }
-
     const { contacts } = data;
 
     const errors: IError[] = [];
@@ -124,4 +119,3 @@ export class PartnerService extends BaseService<Partner> {
     }
   }
 }
-

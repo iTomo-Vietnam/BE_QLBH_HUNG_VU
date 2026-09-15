@@ -39,6 +39,8 @@ import { BadRequestError } from "@/shared/types/errors";
 import { NOTIFICATION_TYPES } from "@/module/notification/notification.types";
 import { NotificationService } from "@/module/notification/notification.service";
 import { ActionType, NotificationType } from "@/database/models/Notification";
+import { TRANSFER_NOTE_TYPES } from "@/module/transferNote/transferNote.types";
+import { TransferNoteService } from "@/module/transferNote/transferNote.service";
 
 const calculateRateAmount = (
   baseAmount: number,
@@ -106,6 +108,8 @@ export class OrderService extends BaseService<Order> {
     private fundRepository: FundRepository,
     @inject(NOTIFICATION_TYPES.NotificationService)
     private notificationService: NotificationService,
+    @inject(TRANSFER_NOTE_TYPES.Service)
+    private transferNoteService: TransferNoteService,
   ) {
     super();
     this.repository = repository;
@@ -610,9 +614,6 @@ export class OrderService extends BaseService<Order> {
   ): Promise<void> {
     data.storeId = data.storeId || req?.storeContext?.storeId;
     if (!data.storeId) throw new Error("store.required");
-    data.code =
-      data.code ||
-      (await generateCode(String(data.type || "sale"), data.storeId));
     const completeImmediately = (data as any).completeImmediately === true;
     data.status = completeImmediately
       ? OrderStatus.COMPLETED
@@ -765,6 +766,11 @@ export class OrderService extends BaseService<Order> {
     await this.debtService.syncForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, data.status, manager);
     await this.recalculate(data, manager);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
     await this.notifyCompletionPending(data);
   }
 
@@ -826,11 +832,28 @@ export class OrderService extends BaseService<Order> {
     await this.debtService.syncForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, data.status, manager);
     await this.recalculate(data, manager, previous);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
+    if (previous?.code && previous.code !== data.code) {
+      await this.transferNoteService.revalidateByReferenceCode(
+        data.storeId,
+        previous.code,
+        manager,
+      );
+    }
   }
 
   async actionAfterDelete(data: Order, manager: EntityManager): Promise<void> {
     await this.debtService.removeForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, OrderStatus.CANCELED, manager);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
   }
 
   async validateBeforeDelete(data: Order): Promise<void> {
@@ -924,7 +947,10 @@ export class OrderService extends BaseService<Order> {
   }
 
   /** Hủy phiếu nháp từ scheduler, không phụ thuộc user session. */
-  async cancelDraftForSystem(id: string, storeId: string): Promise<Order | null> {
+  async cancelDraftForSystem(
+    id: string,
+    storeId: string,
+  ): Promise<Order | null> {
     return this.cancel(id, {
       storeContext: {
         storeId,

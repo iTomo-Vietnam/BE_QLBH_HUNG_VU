@@ -2,9 +2,11 @@ import { inject, injectable } from "inversify";
 import { DeepPartial, EntityManager } from "typeorm";
 import { BaseService } from "@/shared/base/BaseService";
 import { ActionMap, RequestContext } from "@/shared/types/interfaces";
-import { generateCode } from "@/shared/utils/code.utils";
 import { withTransaction } from "@/shared/base/TransactionManager";
-import { StoreTransfer, StoreTransferStatus } from "@/database/models/StoreTransfer";
+import {
+  StoreTransfer,
+  StoreTransferStatus,
+} from "@/database/models/StoreTransfer";
 import { StoreTransferLine } from "@/database/models/StoreTransferLine";
 import { StoreTransferRepository } from "./storeTransfer.repository";
 import { BadRequestError } from "@/shared/types/errors";
@@ -32,12 +34,18 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   protected searchableFields: (keyof StoreTransfer)[] = ["code", "reason"];
 
   constructor(
-    @inject(STORE_TRANSFER_TYPES.Repository) repository: StoreTransferRepository,
-    @inject(STORE_TRANSFER_TYPES.LineRepository) private lineRepository: StoreTransferLineRepository,
-    @inject(PRODUCT_TYPES.ProductRepository) private productRepository: ProductRepository,
-    @inject(ATTRIBUTE_TYPES.AttributeRepository) private attributeRepository: AttributeRepository,
-    @inject(STORE_TYPES.StoreRepository) private storeRepository: StoreRepository,
-    @inject(INVENTORY_TYPES.InventoryRecalculateService) private inventory: InventoryRecalculateService,
+    @inject(STORE_TRANSFER_TYPES.Repository)
+    repository: StoreTransferRepository,
+    @inject(STORE_TRANSFER_TYPES.LineRepository)
+    private lineRepository: StoreTransferLineRepository,
+    @inject(PRODUCT_TYPES.ProductRepository)
+    private productRepository: ProductRepository,
+    @inject(ATTRIBUTE_TYPES.AttributeRepository)
+    private attributeRepository: AttributeRepository,
+    @inject(STORE_TYPES.StoreRepository)
+    private storeRepository: StoreRepository,
+    @inject(INVENTORY_TYPES.InventoryRecalculateService)
+    private inventory: InventoryRecalculateService,
     @inject(NOTIFICATION_TYPES.NotificationService)
     private notificationService: NotificationService,
   ) {
@@ -61,10 +69,14 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     };
   }
 
-  private async prepareLines(lines: any[] | undefined, manager: EntityManager): Promise<void> {
+  private async prepareLines(
+    lines: any[] | undefined,
+    manager: EntityManager,
+  ): Promise<void> {
     if (!Array.isArray(lines)) return;
     for (const line of lines) {
-      if (!line.productId) throw new Error("store.transfer.line.product.required");
+      if (!line.productId)
+        throw new Error("store.transfer.line.product.required");
       await this.productRepository.attachInfo(line, manager);
       if (!line.productSnapshot) throw new Error("product.not_found");
       await this.attributeRepository.attachUnitInfo(line, manager);
@@ -78,10 +90,13 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     excludedRefId?: string,
     validateStock = false,
   ): Promise<void> {
-    if (!data.fromStoreId || !data.toStoreId) throw new Error("store.transfer.store.required");
-    if (data.fromStoreId === data.toStoreId) throw new Error("store.transfer.store.different");
+    if (!data.fromStoreId || !data.toStoreId)
+      throw new Error("store.transfer.store.required");
+    if (data.fromStoreId === data.toStoreId)
+      throw new Error("store.transfer.store.different");
     if (!data.occurredAt) data.occurredAt = new Date();
-    if (!Array.isArray(data.lines) || !data.lines.length) throw new Error("store.transfer.lines.required");
+    if (!Array.isArray(data.lines) || !data.lines.length)
+      throw new Error("store.transfer.lines.required");
 
     await this.prepareLines(data.lines, manager);
     const quantities = new Map<string, number>();
@@ -91,10 +106,14 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       if (!line.productId || !Number.isFinite(quantity) || quantity <= 0) {
         throw new Error("store.transfer.line.quantity.invalid");
       }
-      if (productIds.has(line.productId)) throw new Error("store.transfer.line.duplicate_product");
+      if (productIds.has(line.productId))
+        throw new Error("store.transfer.line.duplicate_product");
       productIds.add(line.productId);
       const baseQuantity = quantity * (Number(line.conversionRateAtTime) || 1);
-      quantities.set(line.productId, (quantities.get(line.productId) || 0) + baseQuantity);
+      quantities.set(
+        line.productId,
+        (quantities.get(line.productId) || 0) + baseQuantity,
+      );
     }
 
     if (!validateStock) return;
@@ -117,29 +136,50 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   ): Promise<void> {
     const quantities = new Map<string, number>();
     for (const line of transfer.lines || []) {
-      const quantity = Math.abs(Number(line.quantity) || 0) * (Number(line.conversionRateAtTime) || 1);
+      const quantity =
+        Math.abs(Number(line.quantity) || 0) *
+        (Number(line.conversionRateAtTime) || 1);
       if (!line.productId || !quantity) continue;
-      quantities.set(line.productId, (quantities.get(line.productId) || 0) + quantity);
+      quantities.set(
+        line.productId,
+        (quantities.get(line.productId) || 0) + quantity,
+      );
     }
     if (!transfer.toStoreId) throw new Error("store.transfer.store.required");
     for (const [productId, quantity] of quantities) {
-      await this.inventory.assertAvailable(productId, transfer.toStoreId, quantity, occurredAt, manager);
+      await this.inventory.assertAvailable(
+        productId,
+        transfer.toStoreId,
+        quantity,
+        occurredAt,
+        manager,
+      );
     }
   }
 
-  private async syncLines(transferId: string, lines: any[], manager: EntityManager): Promise<string[]> {
+  private async syncLines(
+    transferId: string,
+    lines: any[],
+    manager: EntityManager,
+  ): Promise<string[]> {
     const repository = this.lineRepository.getRepository(manager);
     const existing = await repository.find({ where: { transferId } as any });
-    const oldProductIds = existing.map((line) => line.productId).filter((id): id is string => Boolean(id));
+    const oldProductIds = existing
+      .map((line) => line.productId)
+      .filter((id): id is string => Boolean(id));
     const incomingIds = new Set<string>();
 
     for (const line of lines) {
-      const entity = line.id ? existing.find((item) => item.id === line.id) : undefined;
+      const entity = line.id
+        ? existing.find((item) => item.id === line.id)
+        : undefined;
       const payload = { ...line, transferId };
       delete payload.id;
-      const saved = await repository.save(
-        (entity ? repository.merge(entity, payload) : repository.create(payload)) as any,
-      ) as StoreTransferLine;
+      const saved = (await repository.save(
+        (entity
+          ? repository.merge(entity, payload)
+          : repository.create(payload)) as any,
+      )) as StoreTransferLine;
       incomingIds.add(saved.id);
     }
     for (const line of existing) {
@@ -149,7 +189,12 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   }
 
   private getTimelineDates(transfer: Partial<StoreTransfer>): Date[] {
-    return [transfer.occurredAt, transfer.exportedAt, transfer.importedAt, transfer.canceledAt]
+    return [
+      transfer.occurredAt,
+      transfer.exportedAt,
+      transfer.importedAt,
+      transfer.canceledAt,
+    ]
       .filter((value): value is Date => Boolean(value))
       .map((value) => new Date(value));
   }
@@ -175,26 +220,44 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     const productIds = [
       ...new Set([
         ...extraProductIds,
-        ...(transfer.lines || []).map((line) => line.productId).filter((id): id is string => Boolean(id)),
+        ...(transfer.lines || [])
+          .map((line) => line.productId)
+          .filter((id): id is string => Boolean(id)),
       ]),
     ];
     const storeIds = [
-      ...new Set([...oldStores, transfer.fromStoreId, transfer.toStoreId].filter((id): id is string => Boolean(id))),
+      ...new Set(
+        [...oldStores, transfer.fromStoreId, transfer.toStoreId].filter(
+          (id): id is string => Boolean(id),
+        ),
+      ),
     ];
-    const replayFrom = this.getTransferEarliestDate(fromDate, ...this.getTimelineDates(transfer));
+    const replayFrom = this.getTransferEarliestDate(
+      fromDate,
+      ...this.getTimelineDates(transfer),
+    );
 
     for (const productId of productIds) {
       for (const storeId of storeIds) {
-        await this.inventory.recalculateProductStoreFromDate(productId, storeId, replayFrom, manager);
+        await this.inventory.recalculateProductStoreFromDate(
+          productId,
+          storeId,
+          replayFrom,
+          manager,
+        );
       }
     }
   }
 
-  async validateBeforeCreate(data: DeepPartial<StoreTransfer>, manager: EntityManager, req?: RequestContext): Promise<void> {
-    if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+  async validateBeforeCreate(
+    data: DeepPartial<StoreTransfer>,
+    manager: EntityManager,
+    req?: RequestContext,
+  ): Promise<void> {
+    if (!req?.storeContext?.storeId)
+      throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
     if (data.fromStoreId && data.fromStoreId !== req.storeContext.storeId)
       throw new BadRequestError("Cửa hàng xuất phải là cửa hàng đang thao tác");
-    if (!data.code) data.code = await generateCode("storetransfer");
     data.status = StoreTransferStatus.PLANNED;
     data.exportedAt = null;
     data.exporterId = null;
@@ -207,7 +270,10 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     data.cancelerSnapshot = null;
 
     await this.storeRepository.attachInfo(data as any, manager);
-    if ((data.fromStoreId && !data.fromStoreSnapshot) || (data.toStoreId && !data.toStoreSnapshot)) {
+    if (
+      (data.fromStoreId && !data.fromStoreSnapshot) ||
+      (data.toStoreId && !data.toStoreSnapshot)
+    ) {
       throw new Error("store.not_found");
     }
     await this.validateTransferData(data, manager);
@@ -229,10 +295,16 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
         relations: { lines: true },
       });
       if (!current) return null;
-      if (!req?.storeContext?.storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+      if (!req?.storeContext?.storeId)
+        throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
       if (current.fromStoreId !== req.storeContext.storeId)
-        throw new BadRequestError("Không thể cập nhật dữ liệu của cửa hàng khác");
-      if ((current.status || StoreTransferStatus.PLANNED) !== StoreTransferStatus.PLANNED) {
+        throw new BadRequestError(
+          "Không thể cập nhật dữ liệu của cửa hàng khác",
+        );
+      if (
+        (current.status || StoreTransferStatus.PLANNED) !==
+        StoreTransferStatus.PLANNED
+      ) {
         throw new Error("store.transfer.status_locked");
       }
       if (payload.status && payload.status !== StoreTransferStatus.PLANNED) {
@@ -269,13 +341,19 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       if (transferData.fromStoreId === transferData.toStoreId) {
         throw new Error("store.transfer.store.different");
       }
-      if (transferData.fromStoreSnapshot === null || transferData.toStoreSnapshot === null) {
+      if (
+        transferData.fromStoreSnapshot === null ||
+        transferData.toStoreSnapshot === null
+      ) {
         throw new Error("store.not_found");
       }
-      if (Array.isArray(lines)) await this.validateTransferData(transferData, em);
+      if (Array.isArray(lines))
+        await this.validateTransferData(transferData, em);
 
-      if (payload.fromStoreId !== undefined) payload.fromStoreSnapshot = transferData.fromStoreSnapshot;
-      if (payload.toStoreId !== undefined) payload.toStoreSnapshot = transferData.toStoreSnapshot;
+      if (payload.fromStoreId !== undefined)
+        payload.fromStoreSnapshot = transferData.fromStoreSnapshot;
+      if (payload.toStoreId !== undefined)
+        payload.toStoreSnapshot = transferData.toStoreSnapshot;
       payload.status = StoreTransferStatus.PLANNED;
 
       const updated = await super.update(id, payload, em, req);
@@ -284,20 +362,28 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
 
       const oldProductIds = await this.syncLines(id, lines, em);
       await this.replay(id, em, oldProductIds, oldStores, oldOccurredAt);
-      return (await this.repository.getRepository(em).findOne({
-        where: { id },
-        relations: { lines: true },
-      })) || updated;
+      return (
+        (await this.repository.getRepository(em).findOne({
+          where: { id },
+          relations: { lines: true },
+        })) || updated
+      );
     };
 
     return manager ? run(manager) : withTransaction(run);
   }
 
-  private assertStoreScope(req: RequestContext | undefined, allowedStoreIds: (string | null)[]): void {
+  private assertStoreScope(
+    req: RequestContext | undefined,
+    allowedStoreIds: (string | null)[],
+  ): void {
     const storeId = req?.storeContext?.storeId;
-    if (!storeId) throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
+    if (!storeId)
+      throw new BadRequestError("Vui lòng chọn cửa hàng đang thao tác");
     if (!allowedStoreIds.includes(storeId))
-      throw new BadRequestError("Không thể thao tác với dữ liệu của cửa hàng khác");
+      throw new BadRequestError(
+        "Không thể thao tác với dữ liệu của cửa hàng khác",
+      );
   }
 
   private async notifyTransferPending(
@@ -334,7 +420,9 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
         message,
       },
       NotificationType.STORE_TRANSFER,
-      status === StoreTransferStatus.EXPORTED ? ActionType.COMPLETE : ActionType.PENDING,
+      status === StoreTransferStatus.EXPORTED
+        ? ActionType.COMPLETE
+        : ActionType.PENDING,
       userIds,
     );
   }
@@ -346,7 +434,10 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   ): Promise<StoreTransfer | null> {
     const updated = await withTransaction(async (em) => {
       const repository = this.repository.getRepository(em);
-      const current = await repository.findOne({ where: { id }, relations: { lines: true } });
+      const current = await repository.findOne({
+        where: { id },
+        relations: { lines: true },
+      });
       if (!current) throw new Error("store.transfer.not_found");
 
       const currentStatus = current.status || StoreTransferStatus.PLANNED;
@@ -406,15 +497,23 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       }
 
       await repository.update(id, payload as any);
-      const updated = await repository.findOne({ where: { id }, relations: { lines: true } });
+      const updated = await repository.findOne({
+        where: { id },
+        relations: { lines: true },
+      });
       if (!updated) return null;
 
       await this.replay(
         id,
         em,
         [],
-        [current.fromStoreId, current.toStoreId].filter((storeId): storeId is string => Boolean(storeId)),
-        this.getTransferEarliestDate(...oldTimeline, ...this.getTimelineDates(updated)),
+        [current.fromStoreId, current.toStoreId].filter(
+          (storeId): storeId is string => Boolean(storeId),
+        ),
+        this.getTransferEarliestDate(
+          ...oldTimeline,
+          ...this.getTimelineDates(updated),
+        ),
       );
       return updated;
     });
@@ -422,40 +521,64 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     return updated;
   }
 
-  async exportTransfer(id: string, req?: RequestContext): Promise<StoreTransfer | null> {
+  async exportTransfer(
+    id: string,
+    req?: RequestContext,
+  ): Promise<StoreTransfer | null> {
     return this.transition(id, StoreTransferStatus.EXPORTED, req);
   }
 
-  async importTransfer(id: string, req?: RequestContext): Promise<StoreTransfer | null> {
+  async importTransfer(
+    id: string,
+    req?: RequestContext,
+  ): Promise<StoreTransfer | null> {
     return this.transition(id, StoreTransferStatus.IMPORTED, req);
   }
 
-  async cancel(id: string, req?: RequestContext): Promise<StoreTransfer | null> {
+  async cancel(
+    id: string,
+    req?: RequestContext,
+  ): Promise<StoreTransfer | null> {
     return this.transition(id, StoreTransferStatus.CANCELED, req);
   }
 
-  async actionAfterCreate(data: StoreTransfer, manager: EntityManager): Promise<void> {
+  async actionAfterCreate(
+    data: StoreTransfer,
+    manager: EntityManager,
+  ): Promise<void> {
     await this.replay(data.id, manager);
     await this.notifyTransferPending(data, StoreTransferStatus.PLANNED);
   }
 
-  async actionAfterUpdate(data: StoreTransfer, manager: EntityManager): Promise<void> {
+  async actionAfterUpdate(
+    data: StoreTransfer,
+    manager: EntityManager,
+  ): Promise<void> {
     await this.replay(data.id, manager);
   }
 
-  async validateBeforeDelete(data: StoreTransfer, manager: EntityManager): Promise<void> {
+  async validateBeforeDelete(
+    data: StoreTransfer,
+    manager: EntityManager,
+  ): Promise<void> {
     const current = await this.repository.getRepository(manager).findOne({
       where: { id: data.id },
       relations: { lines: true },
     });
     if (!current) return;
-    if ((current.status || StoreTransferStatus.PLANNED) !== StoreTransferStatus.PLANNED) {
+    if (
+      (current.status || StoreTransferStatus.PLANNED) !==
+      StoreTransferStatus.PLANNED
+    ) {
       throw new Error("store.transfer.status_locked");
     }
     (data as any).lines = current.lines;
   }
 
-  async actionAfterDelete(data: StoreTransfer, manager: EntityManager): Promise<void> {
+  async actionAfterDelete(
+    data: StoreTransfer,
+    manager: EntityManager,
+  ): Promise<void> {
     const productIds = new Set<string>(
       ((data as any).lines || [])
         .map((line: StoreTransferLine) => line.productId)
@@ -464,10 +587,17 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     const stores = [data.fromStoreId, data.toStoreId].filter(
       (id): id is string => Boolean(id),
     );
-    const fromDate = this.getTransferEarliestDate(...this.getTimelineDates(data));
+    const fromDate = this.getTransferEarliestDate(
+      ...this.getTimelineDates(data),
+    );
     for (const productId of productIds) {
       for (const storeId of stores) {
-        await this.inventory.recalculateProductStoreFromDate(productId, storeId, fromDate, manager);
+        await this.inventory.recalculateProductStoreFromDate(
+          productId,
+          storeId,
+          fromDate,
+          manager,
+        );
       }
     }
   }

@@ -1,5 +1,11 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager, In, IsNull, LessThanOrEqual } from "typeorm";
+import {
+  DeepPartial,
+  EntityManager,
+  In,
+  IsNull,
+  LessThanOrEqual,
+} from "typeorm";
 import {
   IncomeExpense,
   IncomeExpenseStatus,
@@ -8,7 +14,6 @@ import {
 import { Order, OrderStatus } from "@/database/models/store/Order";
 import { BaseService } from "@/shared/base/BaseService";
 import { RequestContext } from "@/shared/types/interfaces";
-import { generateCode } from "@/shared/utils/code.utils";
 import { FUND_TYPES } from "../fund/fund.types";
 import { FundRepository } from "../fund/fund.repository";
 import { PARTNER_TYPES } from "../partner/partner.types";
@@ -23,6 +28,8 @@ import { AttributeType } from "@/database/models/Attribute";
 import { FilterItem } from "@/shared/types/interfaces";
 import { IncomeExpenseQueryDto } from "./incomeExpense.validator";
 import { nullUuidMap } from "@/shared/constants/enum";
+import { TRANSFER_NOTE_TYPES } from "../transferNote/transferNote.types";
+import { TransferNoteService } from "../transferNote/transferNote.service";
 @injectable()
 export class IncomeExpenseService extends BaseService<IncomeExpense> {
   protected repository: IncomeExpenseRepository;
@@ -31,13 +38,21 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
   protected searchableFields = ["code", "description"];
   protected timeField: keyof IncomeExpense = "occurredAt";
   constructor(
-    @inject(INCOME_EXPENSE_TYPES.Repository) repository: IncomeExpenseRepository,
+    @inject(INCOME_EXPENSE_TYPES.Repository)
+    repository: IncomeExpenseRepository,
     @inject(FUND_TYPES.Repository) private fundRepository: FundRepository,
-    @inject(PARTNER_TYPES.PartnerRepository) private partnerRepository: PartnerRepository,
-    @inject(ATTRIBUTE_TYPES.AttributeRepository) private attributeRepository: AttributeRepository,
+    @inject(PARTNER_TYPES.PartnerRepository)
+    private partnerRepository: PartnerRepository,
+    @inject(ATTRIBUTE_TYPES.AttributeRepository)
+    private attributeRepository: AttributeRepository,
     @inject(DEBT_TYPES.DebtRecalculateService)
     private debtService: DebtRecalculateService,
-  ) { super(); this.repository = repository; }
+    @inject(TRANSFER_NOTE_TYPES.Service)
+    private transferNoteService: TransferNoteService,
+  ) {
+    super();
+    this.repository = repository;
+  }
 
   protected async attachActions(
     entity: IncomeExpense & { _actions?: any },
@@ -55,7 +70,6 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
   ): Promise<void> {
     data.storeId = data.storeId || req?.storeContext?.storeId;
     if (!data.storeId) throw new Error("store.required");
-    if (!data.code) data.code = await generateCode("incomeExpense", data.storeId);
     if (!data.type) throw new Error("incomeExpense.type.required");
     if (
       ![IncomeExpenseType.INCOME, IncomeExpenseType.EXPENSE].includes(data.type)
@@ -121,20 +135,56 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
     if (data.orderId) throw new Error("incomeExpense.order_delete_forbidden");
   }
 
-  async actionAfterCreate(data: IncomeExpense, manager: EntityManager): Promise<void> {
+  async actionAfterCreate(
+    data: IncomeExpense,
+    manager: EntityManager,
+  ): Promise<void> {
     await this.debtService.syncForIncomeExpense(data, manager);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
   }
 
-  async actionAfterUpdate(data: IncomeExpense, manager: EntityManager): Promise<void> {
+  async actionAfterUpdate(
+    data: IncomeExpense,
+    manager: EntityManager,
+    _req?: RequestContext,
+    inputData?: DeepPartial<IncomeExpense>,
+  ): Promise<void> {
     await this.debtService.syncForIncomeExpense(data, manager);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
+    if (inputData?.code && inputData.code !== data.code) {
+      await this.transferNoteService.revalidateByReferenceCode(
+        data.storeId,
+        inputData.code,
+        manager,
+      );
+    }
   }
 
-  async actionAfterDelete(data: IncomeExpense, manager: EntityManager): Promise<void> {
+  async actionAfterDelete(
+    data: IncomeExpense,
+    manager: EntityManager,
+  ): Promise<void> {
     await this.debtService.removeIncomeExpenseReferences(data.id, manager);
+    await this.transferNoteService.revalidateByReferenceCode(
+      data.storeId,
+      data.code,
+      manager,
+    );
   }
 
   /** Hủy các phiếu thu/chi nháp do scheduler xử lý sau giờ làm việc. */
-  async cancelDraftsForSystem(storeId: string, createdBefore: Date): Promise<number> {
+  async cancelDraftsForSystem(
+    storeId: string,
+    createdBefore: Date,
+  ): Promise<number> {
     const repository = this.repository.getRepository();
     const drafts = await repository.find({
       where: {
@@ -171,13 +221,21 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
     filterItems: FilterItem[];
   }> {
     const storeId = req?.storeContext?.storeId || query.storeId;
-    const fundIds = query.fundIds?.length ? query.fundIds : query.fundId ? [query.fundId] : [];
+    const fundIds = query.fundIds?.length
+      ? query.fundIds
+      : query.fundId
+        ? [query.fundId]
+        : [];
     const partnerIds = query.partnerIds?.length
       ? query.partnerIds
       : query.partnerId
         ? [query.partnerId]
         : [];
-    const orderIds = query.orderIds?.length ? query.orderIds : query.orderId ? [query.orderId] : [];
+    const orderIds = query.orderIds?.length
+      ? query.orderIds
+      : query.orderId
+        ? [query.orderId]
+        : [];
     const status = query.status || IncomeExpenseStatus.COMPLETED;
     const qb = this.repository
       .getRepository()
@@ -186,25 +244,44 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
       .addSelect("incomeExpense.type", "type")
       .addSelect("COALESCE(SUM(incomeExpense.amount), 0)", "total")
       .where("incomeExpense.deletedAt IS NULL")
-      .andWhere("incomeExpense.status = :summaryStatus", { summaryStatus: status })
+      .andWhere("incomeExpense.status = :summaryStatus", {
+        summaryStatus: status,
+      })
       .groupBy("incomeExpense.categoryId")
       .addGroupBy("incomeExpense.type");
 
-    if (storeId) qb.andWhere("incomeExpense.storeId = :summaryStoreId", { summaryStoreId: storeId });
-    if (fundIds.length) qb.andWhere("incomeExpense.fundId IN (:...summaryFundIds)", { summaryFundIds: fundIds });
+    if (storeId)
+      qb.andWhere("incomeExpense.storeId = :summaryStoreId", {
+        summaryStoreId: storeId,
+      });
+    if (fundIds.length)
+      qb.andWhere("incomeExpense.fundId IN (:...summaryFundIds)", {
+        summaryFundIds: fundIds,
+      });
     if (partnerIds.length) {
       qb.andWhere("incomeExpense.partnerId IN (:...summaryPartnerIds)", {
         summaryPartnerIds: partnerIds,
       });
     }
-    if (orderIds.length) qb.andWhere("incomeExpense.orderId IN (:...summaryOrderIds)", { summaryOrderIds: orderIds });
-    if (query.startAt) qb.andWhere("incomeExpense.occurredAt >= :summaryStartAt", { summaryStartAt: query.startAt });
-    if (query.endAt) qb.andWhere("incomeExpense.occurredAt <= :summaryEndAt", { summaryEndAt: query.endAt });
+    if (orderIds.length)
+      qb.andWhere("incomeExpense.orderId IN (:...summaryOrderIds)", {
+        summaryOrderIds: orderIds,
+      });
+    if (query.startAt)
+      qb.andWhere("incomeExpense.occurredAt >= :summaryStartAt", {
+        summaryStartAt: query.startAt,
+      });
+    if (query.endAt)
+      qb.andWhere("incomeExpense.occurredAt <= :summaryEndAt", {
+        summaryEndAt: query.endAt,
+      });
 
     for (const suffix of ["Gte", "Gt", "Eq", "Lte", "Lt"] as const) {
       const value = (query as Record<string, unknown>)[`amount${suffix}`];
       if (value === undefined || value === null || value === "") continue;
-      const operator = { Gte: ">=", Gt: ">", Eq: "=", Lte: "<=", Lt: "<" }[suffix];
+      const operator = { Gte: ">=", Gt: ">", Eq: "=", Lte: "<=", Lt: "<" }[
+        suffix
+      ];
       qb.andWhere(`incomeExpense.amount ${operator} :summaryAmount${suffix}`, {
         [`summaryAmount${suffix}`]: value,
       });
@@ -213,13 +290,20 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
     const [categories, rows] = await Promise.all([
       this.attributeRepository.findByOptions({
         where: {
-          type: In([AttributeType.INCOME_CATEGORY, AttributeType.EXPENSE_CATEGORY]),
+          type: In([
+            AttributeType.INCOME_CATEGORY,
+            AttributeType.EXPENSE_CATEGORY,
+          ]),
           deletedAt: IsNull(),
         } as any,
         select: { id: true, name: true, type: true } as any,
         order: { name: "ASC" } as any,
       }),
-      qb.getRawMany<{ categoryId: string | null; type: IncomeExpenseType; total: string }>(),
+      qb.getRawMany<{
+        categoryId: string | null;
+        type: IncomeExpenseType;
+        total: string;
+      }>(),
     ]);
 
     const totals = { totalIncome: 0, totalExpense: 0 };
@@ -236,7 +320,10 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
         id: category.id,
         name: category.name,
         type: category.type,
-        value: amountByCategory.get(`${category.id}:${category.type === AttributeType.INCOME_CATEGORY ? IncomeExpenseType.INCOME : IncomeExpenseType.EXPENSE}`) || 0,
+        value:
+          amountByCategory.get(
+            `${category.id}:${category.type === AttributeType.INCOME_CATEGORY ? IncomeExpenseType.INCOME : IncomeExpenseType.EXPENSE}`,
+          ) || 0,
       }))
       .filter((item) => item.value > 0);
 
@@ -287,7 +374,9 @@ export class IncomeExpenseService extends BaseService<IncomeExpense> {
       throw new Error("incomeExpense.order_description_locked");
     }
     if (data.occurredAt !== undefined) {
-      const currentTime = current.occurredAt?.getTime?.() ?? new Date(current.occurredAt).getTime();
+      const currentTime =
+        current.occurredAt?.getTime?.() ??
+        new Date(current.occurredAt).getTime();
       const nextTime = new Date(data.occurredAt as Date).getTime();
       if (currentTime !== nextTime) {
         throw new Error("incomeExpense.order_occurred_at_locked");

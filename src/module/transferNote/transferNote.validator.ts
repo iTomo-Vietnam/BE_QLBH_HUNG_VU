@@ -11,6 +11,7 @@ import { TransferNoteStatus } from "@/database/models/TransferNote";
 const TransferNoteFields = {
   occurredAt: DateTransform.optional(),
   referenceCode: z.string().trim().min(1).max(100),
+  note: z.string().trim().nullish(),
   fundId: z.uuid(),
   amount: z.number().positive(),
   status: z.enum(TransferNoteStatus).optional(),
@@ -21,6 +22,7 @@ export const CreateTransferNoteSchema = BaseCreateSchema.extend(TransferNoteFiel
 export const UpdateTransferNoteSchema = BaseUpdateSchema.extend({
   occurredAt: DateTransform.optional(),
   referenceCode: z.string().trim().min(1).max(100).optional(),
+  note: z.string().trim().nullish(),
   fundId: z.uuid().optional(),
   amount: z.number().positive().optional(),
   status: z.enum(TransferNoteStatus).optional(),

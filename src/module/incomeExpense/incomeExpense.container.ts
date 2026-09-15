@@ -8,6 +8,7 @@ import { FUND_TYPES } from "../fund/fund.types";
 import { PARTNER_TYPES } from "../partner/partner.types";
 import { ATTRIBUTE_TYPES } from "../attribute/attribute.types";
 import { DEBT_TYPES } from "../debt/debt.types";
+import { TRANSFER_NOTE_TYPES } from "../transferNote/transferNote.types";
 
 export const incomeExpenseModule = new ContainerModule((bind) => {
   bind(INCOME_EXPENSE_TYPES.Repository).to(IncomeExpenseRepository).inSingletonScope();
@@ -18,6 +19,7 @@ export const incomeExpenseModule = new ContainerModule((bind) => {
       context.container.get(PARTNER_TYPES.PartnerRepository),
       context.container.get(ATTRIBUTE_TYPES.AttributeRepository),
       context.container.get(DEBT_TYPES.DebtRecalculateService),
+      context.container.get(TRANSFER_NOTE_TYPES.Service),
     ))
     .inSingletonScope();
   bind(INCOME_EXPENSE_TYPES.Controller)

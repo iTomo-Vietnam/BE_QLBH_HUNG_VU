@@ -79,7 +79,6 @@ export class ProductService extends BaseService<Product> {
     await this.validateProductBrand(data.brandId, _manager);
 
     if (data.salePrice == null) data.salePrice = 0;
-    if (!data.code) data.code = await generateCode("product");
     this.fillBarcodeIfEmpty(data, data.code);
   }
   async validateBeforeUpdate(
@@ -464,7 +463,11 @@ export class ProductService extends BaseService<Product> {
     }
     const products = await this.repository.find(options);
     const storeId = (query as any).storeId || req?.storeContext?.storeId;
-    if (Array.isArray(req?.availableStoreIds) && storeId && !req.availableStoreIds.includes(storeId))
+    if (
+      Array.isArray(req?.availableStoreIds) &&
+      storeId &&
+      !req.availableStoreIds.includes(storeId)
+    )
       return [];
     if (!storeId || !products.length) return products;
     const histories = await this.priceHistoryRepository.getRepository().find({
@@ -494,11 +497,15 @@ export class ProductService extends BaseService<Product> {
     const where: any = { code: In(normalizedCodes), deletedAt: IsNull() };
     if (Array.isArray(req?.availableStoreIds)) {
       if (req.availableStoreIds.length === 0) return [];
-      const storeProducts = await this.storeProductRepository.getRepository().find({
-        where: { storeId: In(req.availableStoreIds) } as any,
-        select: { productId: true } as any,
-      });
-      const productIds = [...new Set(storeProducts.map((item) => item.productId))];
+      const storeProducts = await this.storeProductRepository
+        .getRepository()
+        .find({
+          where: { storeId: In(req.availableStoreIds) } as any,
+          select: { productId: true } as any,
+        });
+      const productIds = [
+        ...new Set(storeProducts.map((item) => item.productId)),
+      ];
       if (!productIds.length) return [];
       where.id = In(productIds);
     }

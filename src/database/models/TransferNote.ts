@@ -16,6 +16,9 @@ export class TransferNote extends StoreEntity {
   @Column({ type: "varchar", length: 100 })
   referenceCode: string;
 
+  @Column({ type: "text", nullable: true, default: null })
+  note: string | null;
+
   @Column({ type: "uuid" })
   fundId: string;
 

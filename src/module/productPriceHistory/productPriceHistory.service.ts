@@ -7,7 +7,6 @@ import { ProductPriceHistoryRepository } from "./productPriceHistory.repository"
 import { PRODUCT_PRICE_HISTORY_TYPES } from "./productPriceHistory.types";
 import { INVENTORY_TYPES } from "../inventory/inventory.types";
 import { InventoryRecalculateService } from "../inventory/inventoryRecalculate.service";
-import { generateCode } from "@/shared/utils/code.utils";
 import { PRODUCT_TYPES } from "../product/product.types";
 import { ProductRepository } from "../product/product.repository";
 import { STORE_PRODUCT_TYPES } from "../storeProduct/storeProduct.types";
@@ -65,23 +64,27 @@ export class ProductPriceHistoryService extends BaseService<ProductPriceHistory>
       throw new Error("productPriceHistory.costPrice.invalid");
     }
 
-    const productSnapshot = await this.productRepository.getSnapshot(payload.productId, manager);
+    const productSnapshot = await this.productRepository.getSnapshot(
+      payload.productId,
+      manager,
+    );
     if (!productSnapshot) throw new Error("product.not_found");
-    const storeProduct = await this.storeProductRepository.getRepository(manager).findOne({ where: { productId: payload.productId, storeId } as any });
+    const storeProduct = await this.storeProductRepository
+      .getRepository(manager)
+      .findOne({ where: { productId: payload.productId, storeId } as any });
     const before = Number(storeProduct?.costPrice) || 0;
 
     payload.storeId = storeId;
     payload.productSnapshot = productSnapshot;
     payload.deltaCostPrice = costPrice - before;
-    payload.code =
-      payload.code || (await generateCode("pricehistory", storeId));
   }
 
   async actionAfterCreate(
     data: ProductPriceHistory,
     manager: EntityManager,
   ): Promise<void> {
-    const storeProductRepository = this.storeProductRepository.getRepository(manager);
+    const storeProductRepository =
+      this.storeProductRepository.getRepository(manager);
     const current = await storeProductRepository.findOne({
       where: { productId: data.productId!, storeId: data.storeId } as any,
     });
