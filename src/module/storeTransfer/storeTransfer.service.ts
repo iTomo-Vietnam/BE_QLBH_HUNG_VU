@@ -87,8 +87,6 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
   private async validateTransferData(
     data: any,
     manager: EntityManager,
-    excludedRefId?: string,
-    validateStock = false,
   ): Promise<void> {
     if (!data.fromStoreId || !data.toStoreId)
       throw new Error("store.transfer.store.required");
@@ -99,7 +97,6 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       throw new Error("store.transfer.lines.required");
 
     await this.prepareLines(data.lines, manager);
-    const quantities = new Map<string, number>();
     const productIds = new Set<string>();
     for (const line of data.lines) {
       const quantity = Number(line.quantity) || 0;
@@ -109,51 +106,6 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
       if (productIds.has(line.productId))
         throw new Error("store.transfer.line.duplicate_product");
       productIds.add(line.productId);
-      const baseQuantity = quantity * (Number(line.conversionRateAtTime) || 1);
-      quantities.set(
-        line.productId,
-        (quantities.get(line.productId) || 0) + baseQuantity,
-      );
-    }
-
-    if (!validateStock) return;
-    for (const [productId, quantity] of quantities) {
-      await this.inventory.assertAvailable(
-        productId,
-        data.fromStoreId,
-        quantity,
-        data.occurredAt,
-        manager,
-        excludedRefId,
-      );
-    }
-  }
-
-  private async assertDestinationAvailable(
-    transfer: StoreTransfer,
-    occurredAt: Date,
-    manager: EntityManager,
-  ): Promise<void> {
-    const quantities = new Map<string, number>();
-    for (const line of transfer.lines || []) {
-      const quantity =
-        Math.abs(Number(line.quantity) || 0) *
-        (Number(line.conversionRateAtTime) || 1);
-      if (!line.productId || !quantity) continue;
-      quantities.set(
-        line.productId,
-        (quantities.get(line.productId) || 0) + quantity,
-      );
-    }
-    if (!transfer.toStoreId) throw new Error("store.transfer.store.required");
-    for (const [productId, quantity] of quantities) {
-      await this.inventory.assertAvailable(
-        productId,
-        transfer.toStoreId,
-        quantity,
-        occurredAt,
-        manager,
-      );
     }
   }
 
@@ -407,8 +359,8 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
 
     const message =
       status === StoreTransferStatus.EXPORTED
-        ? `Phiếu chuyển kho ${transfer.code} đã xuất hàng, đang chờ cửa hàng nhận nhập kho`
-        : `Phiếu chuyển kho ${transfer.code} đang chờ cửa hàng xuất hàng`;
+        ? `Phiếu chuyển hàng ${transfer.code} đã xuất hàng, đang chờ cửa hàng nhận nhập kho`
+        : `Phiếu chuyển hàng ${transfer.code} đang chờ cửa hàng xuất hàng`;
     await this.notificationService.createNotificationByEntity(
       {
         id: transfer.id,
@@ -450,11 +402,11 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
           throw new Error("store.transfer.invalid_export_transition");
         }
         this.assertStoreScope(req, [current.fromStoreId]);
+        // Chuyển kho không chặn theo tồn kho. Tồn kho là số liệu được tính
+        // lại từ ledger và có thể âm theo nghiệp vụ của hệ thống.
         await this.validateTransferData(
           { ...current, occurredAt: now, lines: current.lines },
           em,
-          id,
-          true,
         );
       }
 
@@ -470,9 +422,8 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
           throw new Error("store.transfer.already_canceled");
         }
         this.assertStoreScope(req, [current.fromStoreId, current.toStoreId]);
-        if (currentStatus === StoreTransferStatus.IMPORTED) {
-          await this.assertDestinationAvailable(current, now, em);
-        }
+        // Không kiểm tra số dư kho nhận khi hủy. Việc đảo giao dịch có thể
+        // làm số lượng âm và vẫn phải được ghi nhận trong ledger.
       }
 
       const oldTimeline = this.getTimelineDates(current);

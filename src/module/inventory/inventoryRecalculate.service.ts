@@ -31,6 +31,7 @@ import { InventoryRepository } from "./inventory.repository";
 import { PRODUCT_TYPES } from "../product/product.types";
 import { ProductRepository } from "../product/product.repository";
 import { InternalExport } from "@/database/models/store/InternalExport";
+import { BadRequestError } from "@/shared/types/errors";
 
 export interface InventoryRecalculateNode {
   productId: string;
@@ -505,8 +506,9 @@ export class InventoryRecalculateService extends TransactionService {
       excludedRefId,
     );
     if (available + 1e-9 < quantity) {
-      throw new Error(
-        `inventory.insufficient:${productId}:${available}:${quantity}`,
+      const product = await this.productRepository.getSnapshot(productId, manager);
+      throw new BadRequestError(
+        `Tồn kho sản phẩm ${product?.code || product?.name || productId} không đủ: hiện có ${available}, cần ${quantity}.`,
       );
     }
   }

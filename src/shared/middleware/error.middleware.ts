@@ -39,10 +39,10 @@ export const errorHandler = (
   error: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): void => {
   let statusCode = 500;
-  let message = "Internal Server Error";
+  let message = "Đã xảy ra lỗi không xác định. Vui lòng thử lại sau.";
   let errors: any = null;
 
   // Handle operational errors
@@ -55,22 +55,23 @@ export const errorHandler = (
   // Handle validation errors
   if (error.name === "ValidationError") {
     statusCode = 400;
-    message = "Validation Error";
+    message =
+      "Đã xảy ra lỗi định dạng dữ liệu. Vui lòng kiểm tra lại dữ liệu đầu vào.";
     errors = error.message;
   }
 
   // Handle all TypeORM errors
   if (error instanceof QueryFailedError) {
     statusCode = 400;
-    message = "Database Query Failed";
+    message = "Truy vấn cơ sở dữ liệu thất bại";
     errors = [DBErrorCode[error.driverError.code as keyof typeof DBErrorCode]];
   } else if (error instanceof EntityNotFoundError) {
     statusCode = 404;
-    message = "Entity Not Found";
+    message = "Không tìm thấy thực thể";
     errors = [DBErrorCode[error.criteria.code as keyof typeof DBErrorCode]];
   } else if (error instanceof CannotCreateEntityIdMapError) {
     statusCode = 400;
-    message = "Cannot Create Entity ID Map";
+    message = "Không thể tạo ID map thực thể";
     errors = [DBErrorCode[error.name as keyof typeof DBErrorCode]];
   } else if (error instanceof OptimisticLockVersionMismatchError) {
     statusCode = 409;

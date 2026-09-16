@@ -66,8 +66,8 @@ export const NotificationTitleMap: Record<
     [ActionType.CANCEL]: "Phiếu chưa hoàn thành đã bị hủy",
   },
   [NotificationType.STORE_TRANSFER]: {
-    [ActionType.PENDING]: "Phiếu chuyển kho cần xử lý",
-    [ActionType.COMPLETE]: "Phiếu chuyển kho đã xuất, chờ nhập kho",
+    [ActionType.PENDING]: "Phiếu chuyển hàng cần xử lý",
+    [ActionType.COMPLETE]: "Phiếu chuyển hàng đã xuất, chờ nhập kho",
   },
 };
 
@@ -140,8 +140,6 @@ export const notificationContent: NotificationContent = {
     "Phiếu chuyển kho {code} đang chờ xuất kho",
   [`${NotificationType.STORE_TRANSFER}.${ActionType.COMPLETE}`]:
     "Phiếu chuyển kho {code} đã xuất, đang chờ nhập kho",
-  [`${NotificationType.STORE_WORKDAY}.${ActionType.REMINDER}`]:
-    "{message}",
-  [`${NotificationType.STORE_WORKDAY}.${ActionType.CANCEL}`]:
-    "{message}",
+  [`${NotificationType.STORE_WORKDAY}.${ActionType.REMINDER}`]: "{message}",
+  [`${NotificationType.STORE_WORKDAY}.${ActionType.CANCEL}`]: "{message}",
 };
