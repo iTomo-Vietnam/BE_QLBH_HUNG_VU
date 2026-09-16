@@ -1,12 +1,14 @@
 import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseNumericColumnOptions } from "@/shared/base/BaseEntity";
-import { Product } from "../Product";
+import { Product, ProductSnapshot } from "../Product";
 import { StoreEntity } from "./StoreEntity";
 
 @Entity("product_price_histories")
 export class ProductPriceHistory extends StoreEntity {
   @Column({ type: "varchar", length: 20 })
   code: string; // mã phiếu
+  @Column({ type: "timestamptz", default: () => "CURRENT_TIMESTAMP" })
+  occurredAt: Date; // ngày thay đổi giá
 
   @Column({ type: "uuid" })
   productId: string;
@@ -15,7 +17,7 @@ export class ProductPriceHistory extends StoreEntity {
   product: Product;
 
   @Column({ type: "jsonb", nullable: true, default: null })
-  productSnapshot: { id: string; code: string; name: string } | null;
+  productSnapshot: ProductSnapshot | null;
 
   @Column(BaseNumericColumnOptions)
   costPrice: number; // Giá vốn/ĐVT cơ bản
