@@ -3,7 +3,8 @@ import { BaseSelect } from "@/shared/base/BaseSelect";
 import { ProductPriceHistory } from "@/database/models/store/ProductPriceHistory";
 
 export const ProductPriceHistorySelectList: FindOptionsSelect<ProductPriceHistory> = {
-  ...BaseSelect, storeId: true, code: true, productId: true, productSnapshot: true,
+  ...BaseSelect, storeId: true, code: true, occurredAt: true, productId: true,
+  purchaseLineId: true, productSnapshot: true,
   costPrice: true, deltaCostPrice: true,
   store: { id: true, code: true, name: true },
 };

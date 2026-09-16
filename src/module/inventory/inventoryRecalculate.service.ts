@@ -109,10 +109,12 @@ export class InventoryRecalculateService extends TransactionService {
       where: {
         productId,
         storeId,
-        createdAt: LessThan(at),
+        // Giá vốn là timeline nghiệp vụ, không phải timeline insert DB.
+        // Một phiếu nhập có thể được lưu sau nhưng xảy ra ở thời điểm cũ hơn.
+        occurredAt: LessThan(at),
         deletedAt: IsNull(),
       } as any,
-      order: { createdAt: "DESC", id: "DESC" } as any,
+      order: { occurredAt: "DESC", createdAt: "DESC", id: "DESC" } as any,
     });
     if (history) return Number(history.costPrice) || 0;
     const storeProduct = await this.storeProductRepository
@@ -279,7 +281,7 @@ export class InventoryRecalculateService extends TransactionService {
       }
     }
     for (const price of prices) {
-      const at = price.createdAt;
+      const at = price.occurredAt;
       if (at >= fromDate) {
         events.push({
           occurredAt: at,
@@ -293,8 +295,11 @@ export class InventoryRecalculateService extends TransactionService {
     }
     return events.sort(
       (a, b) =>
-        a.occurredAt.getTime() - b.occurredAt.getTime() ||
+      a.occurredAt.getTime() - b.occurredAt.getTime() ||
+        // Đổi giá phải chạy trước movement cùng thời điểm (đặc biệt là
+        // purchase có giá vốn mới), nếu không inventoryValueAfter bị lệch.
         Number(!!b.price) - Number(!!a.price) ||
+        a.refType.localeCompare(b.refType) ||
         a.refId.localeCompare(b.refId),
     );
   }

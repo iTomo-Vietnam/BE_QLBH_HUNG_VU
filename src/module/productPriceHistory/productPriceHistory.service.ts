@@ -1,5 +1,5 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager } from "typeorm";
+import { DeepPartial, EntityManager, IsNull, LessThan } from "typeorm";
 import { BaseService } from "@/shared/base/BaseService";
 import { RequestContext } from "@/shared/types/interfaces";
 import { ProductPriceHistory } from "@/database/models/store/ProductPriceHistory";
@@ -29,7 +29,7 @@ export class ProductPriceHistoryService extends BaseService<ProductPriceHistory>
     super();
     this.repository = repository;
     this.searchableFields = ["code"];
-    this.timeField = "createdAt";
+    this.timeField = "occurredAt";
   }
 
   async findById(
@@ -69,10 +69,21 @@ export class ProductPriceHistoryService extends BaseService<ProductPriceHistory>
       manager,
     );
     if (!productSnapshot) throw new Error("product.not_found");
+    payload.occurredAt = payload.occurredAt || new Date();
+    const historyBefore = await this.repository.getRepository(manager).findOne({
+      where: {
+        productId: payload.productId,
+        storeId,
+        occurredAt: LessThan(payload.occurredAt),
+        deletedAt: IsNull(),
+      } as any,
+      order: { occurredAt: "DESC", createdAt: "DESC", id: "DESC" } as any,
+    });
     const storeProduct = await this.storeProductRepository
       .getRepository(manager)
       .findOne({ where: { productId: payload.productId, storeId } as any });
-    const before = Number(storeProduct?.costPrice) || 0;
+    const before =
+      Number(historyBefore?.costPrice ?? storeProduct?.costPrice) || 0;
 
     payload.storeId = storeId;
     payload.productSnapshot = productSnapshot;
@@ -99,7 +110,7 @@ export class ProductPriceHistoryService extends BaseService<ProductPriceHistory>
     await this.inventory.recalculateProductStoreFromDate(
       data.productId!,
       data.storeId,
-      data.createdAt,
+      data.occurredAt,
       manager,
     );
   }

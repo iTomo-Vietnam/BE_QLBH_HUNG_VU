@@ -27,6 +27,7 @@
     "db:create": "ts-node -r tsconfig-paths/register src/database/function/schema-from-entities.ts",
     "db:recreate": "ts-node -r tsconfig-paths/register src/database/function/schema-from-entities.ts --recreate",
     "db:generate": "./scripts/generate-schema.sh",
+    "inventory:rebuild": "ts-node -r tsconfig-paths/register src/scripts/rebuild-inventory-ledger.ts",
     "db:seed": "ts-node -r tsconfig-paths/register src/database/seeders/index.ts",
     "db:seed:attribute": "ts-node -r tsconfig-paths/register src/database/seeders/attribute/index.ts",
     "typeorm": "typeorm-ts-node-commonjs -d src/config/database.ts",

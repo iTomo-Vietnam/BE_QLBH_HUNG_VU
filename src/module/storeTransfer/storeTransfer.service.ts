@@ -156,6 +156,41 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
     return new Date(Math.min(...validDates.map((value) => value.getTime())));
   }
 
+  private async syncDifferenceCostPrices(
+    transfer: StoreTransfer,
+    manager: EntityManager,
+  ): Promise<void> {
+    if (
+      transfer.status !== StoreTransferStatus.IMPORTED ||
+      !transfer.exportedAt ||
+      !transfer.importedAt
+    )
+      return;
+
+    const repository = this.lineRepository.getRepository(manager);
+    for (const line of transfer.lines || []) {
+      if (!line.id || !line.productId) continue;
+      const quantity =
+        Math.abs(Number(line.quantity) || 0) *
+        (Number(line.conversionRateAtTime) || 1);
+      const fromCost = await this.inventory.getCostPriceBefore(
+        line.productId,
+        transfer.fromStoreId!,
+        transfer.exportedAt,
+        manager,
+      );
+      const toCost = await this.inventory.getCostPriceBefore(
+        line.productId,
+        transfer.toStoreId!,
+        transfer.importedAt,
+        manager,
+      );
+      await repository.update(line.id, {
+        differenceCostPriceAmount: quantity * (toCost - fromCost),
+      });
+    }
+  }
+
   private async replay(
     id: string,
     manager: EntityManager,
@@ -453,6 +488,8 @@ export class StoreTransferService extends BaseService<StoreTransfer> {
         relations: { lines: true },
       });
       if (!updated) return null;
+
+      await this.syncDifferenceCostPrices(updated, em);
 
       await this.replay(
         id,

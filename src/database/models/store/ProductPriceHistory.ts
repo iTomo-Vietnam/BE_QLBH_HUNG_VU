@@ -2,6 +2,7 @@ import { Entity, Column, ManyToOne, JoinColumn } from "typeorm";
 import { BaseNumericColumnOptions } from "@/shared/base/BaseEntity";
 import { Product, ProductSnapshot } from "../Product";
 import { StoreEntity } from "./StoreEntity";
+import { OrderLine } from "./OrderLine";
 
 @Entity("product_price_histories")
 export class ProductPriceHistory extends StoreEntity {
@@ -15,6 +16,13 @@ export class ProductPriceHistory extends StoreEntity {
   @ManyToOne(() => Product, (p) => p.priceHistories, { onDelete: "CASCADE" })
   @JoinColumn({ name: "productId" })
   product: Product;
+
+  /** Chỉ có lịch sử giá vốn tự sinh từ một dòng nhập hàng mới có giá trị này. */
+  @Column({ type: "uuid", nullable: true, default: null })
+  purchaseLineId: string | null;
+  @ManyToOne(() => OrderLine, { nullable: true, onDelete: "CASCADE" })
+  @JoinColumn({ name: "purchaseLineId" })
+  purchaseLine: OrderLine | null;
 
   @Column({ type: "jsonb", nullable: true, default: null })
   productSnapshot: ProductSnapshot | null;

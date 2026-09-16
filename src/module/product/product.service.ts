@@ -1,5 +1,5 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager, In, IsNull } from "typeorm";
+import { DeepPartial, EntityManager, In, IsNull, LessThan } from "typeorm";
 import { BaseService } from "@/shared/base/BaseService";
 import { AttributeType, Product } from "@/database/models";
 import { ProductPriceHistory } from "@/database/models/store/ProductPriceHistory";
@@ -126,6 +126,9 @@ export class ProductService extends BaseService<Product> {
       (inputData as any)?.storeProducts,
       manager,
       req,
+      data.createdAt,
+      data.creatorId,
+      data.creatorSnapshot,
     );
   }
 
@@ -141,6 +144,9 @@ export class ProductService extends BaseService<Product> {
         (inputData as any).storeProducts,
         manager,
         req,
+        data.updatedAt || new Date(),
+        data.updaterId || data.creatorId,
+        data.updaterSnapshot || data.creatorSnapshot,
       );
     }
     if (Array.isArray((inputData as any)?.extraUnits)) {
@@ -205,6 +211,9 @@ export class ProductService extends BaseService<Product> {
     rows: any,
     manager: EntityManager,
     req?: RequestContext,
+    occurredAt: Date = new Date(),
+    creatorId?: string | null,
+    creatorSnapshot?: Product["creatorSnapshot"],
   ): Promise<void> {
     if (!Array.isArray(rows)) return;
 
@@ -264,6 +273,17 @@ export class ProductService extends BaseService<Product> {
         } as any),
       )) as unknown as StoreProduct;
 
+      await this.ensureCostHistory(
+        productId,
+        savedStoreProduct.storeId,
+        Number(row.costPrice) || 0,
+        current,
+        occurredAt,
+        creatorId,
+        creatorSnapshot,
+        manager,
+      );
+
       await locationRepo.delete({ storeProductId: savedStoreProduct.id });
       if (locationIds.length) {
         await locationRepo.save(
@@ -281,6 +301,58 @@ export class ProductService extends BaseService<Product> {
       .filter((item) => !incomingIds.has(item.storeId) && !item.deletedAt)
       .map((item) => item.id);
     if (removedIds.length) await repo.softDelete(removedIds);
+  }
+
+  /**
+   * Mỗi cặp sản phẩm/chi nhánh phải có mốc giá vốn đầu tiên. Các mốc tiếp theo
+   * chỉ được tạo khi giá thực sự thay đổi; lịch sử do phiếu nhập sẽ được gắn
+   * purchaseLineId ở OrderService và không đi qua hàm này.
+   */
+  private async ensureCostHistory(
+    productId: string,
+    storeId: string,
+    costPrice: number,
+    current: StoreProduct | undefined,
+    occurredAt: Date,
+    creatorId: string | null | undefined,
+    creatorSnapshot: Product["creatorSnapshot"] | undefined,
+    manager: EntityManager,
+  ): Promise<void> {
+    const historyRepository = this.priceHistoryRepository.getRepository(manager);
+    const latest = await historyRepository.findOne({
+      where: {
+        productId,
+        storeId,
+        occurredAt: LessThan(occurredAt),
+        deletedAt: IsNull(),
+      } as any,
+      order: { occurredAt: "DESC", createdAt: "DESC", id: "DESC" } as any,
+    });
+    const before = Number(latest?.costPrice ?? current?.costPrice) || 0;
+    if (latest && Math.abs(costPrice - before) < 0.000001) return;
+
+    const productSnapshot = await this.repository.getSnapshot(productId, manager);
+    if (!productSnapshot) throw new Error("product.not_found");
+    await historyRepository.save(
+      historyRepository.create({
+        storeId,
+        productId,
+        productSnapshot,
+        code: await generateCode("pricehistory", storeId),
+        occurredAt,
+        creatorId: creatorId || null,
+        creatorSnapshot: creatorSnapshot || null,
+        costPrice,
+        deltaCostPrice: costPrice - before,
+        purchaseLineId: null,
+      }),
+    );
+    await this.inventory.recalculateProductStoreFromDate(
+      productId,
+      storeId,
+      occurredAt,
+      manager,
+    );
   }
 
   private async validateStoreProductLocations(
@@ -415,28 +487,17 @@ export class ProductService extends BaseService<Product> {
       const current = await repo.findOne({
         where: { productId, storeId } as any,
       });
-      const before = Number(current?.costPrice) || 0;
-      const delta = costPrice - before;
-      if (Math.abs(delta) < 0.000001) return;
-      const productSnapshot = await this.repository.getSnapshot(productId, em);
-      if (!productSnapshot) throw new Error("product.not_found");
       await repo.save(
         repo.create({ ...(current || {}), productId, storeId, costPrice }),
       );
-      const history = await this.priceHistoryRepository.getRepository(em).save(
-        this.priceHistoryRepository.getRepository(em).create({
-          storeId,
-          productId,
-          productSnapshot,
-          code: await generateCode("pricehistory", storeId),
-          costPrice,
-          deltaCostPrice: delta,
-        }),
-      );
-      await this.inventory.recalculateProductStoreFromDate(
+      await this.ensureCostHistory(
         productId,
         storeId,
-        history.createdAt,
+        costPrice,
+        current || undefined,
+        new Date(),
+        undefined,
+        undefined,
         em,
       );
     };
@@ -475,7 +536,7 @@ export class ProductService extends BaseService<Product> {
         storeId,
         productId: (products as any).map((p: Product) => p.id),
       } as any,
-      order: { createdAt: "DESC" } as any,
+      order: { occurredAt: "DESC", createdAt: "DESC", id: "DESC" } as any,
     });
     const map = new Map<string, ProductPriceHistory[]>();
     for (const history of histories)

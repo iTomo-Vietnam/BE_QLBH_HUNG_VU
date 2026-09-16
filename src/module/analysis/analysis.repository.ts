@@ -237,6 +237,136 @@ export class AnalysisRepository {
     return { inventory: numeric(row.inventory), fund: numeric(row.fund), vat: numeric(row.vat), debt: numeric(row.debt) };
   }
 
+  /**
+   * Cost variances are kept outside order gross profit because they do not
+   * represent sales revenue:
+   * - value-only inventory transactions from price histories;
+   * - supplier return value minus the cost removed from inventory;
+   * - the difference between source transfer cost and receiving-store cost.
+   */
+  async getCostDifference(scope: AnalysisScope, range: AnalysisRange): Promise<number> {
+    const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
+    const priceBranch = this.scope("it", scope, params);
+    const purchaseBranch = this.scope("o", scope, params);
+    let transferBranch = "";
+    if (Array.isArray(scope.storeIds)) {
+      if (!scope.storeIds.length) transferBranch = " AND 1 = 0";
+      else {
+        params.push(scope.storeIds);
+        transferBranch = ` AND (st."fromStoreId" = ANY($${params.length}::uuid[]) OR st."toStoreId" = ANY($${params.length}::uuid[]))`;
+      }
+    } else if (scope.branch !== "all") {
+      params.push(scope.branch);
+      transferBranch = ` AND (st."fromStoreId" = $${params.length} OR st."toStoreId" = $${params.length})`;
+    }
+    const rows = await DatabaseConfig.query(
+      `SELECT
+        COALESCE((
+          SELECT SUM(CASE WHEN it.type = 'in' THEN ABS(it.amount) ELSE -ABS(it.amount) END)
+          FROM inventory_transactions it
+          WHERE it."deletedAt" IS NULL AND it."refType" = 'product_price_update'
+            AND timezone($1, it."occurredAt")::date >= $2::date
+            AND timezone($1, it."occurredAt")::date < $3::date ${priceBranch}
+        ), 0)
+        + COALESCE((
+          SELECT SUM(COALESCE(o."totalAmount", 0) - COALESCE(o."totalCost", 0))
+          FROM orders o
+          WHERE o."deletedAt" IS NULL AND o.status = 'completed' AND o.type = 'purchase_return'
+            AND timezone($1, COALESCE(o."occurredAt", o."orderAt"))::date >= $2::date
+            AND timezone($1, COALESCE(o."occurredAt", o."orderAt"))::date < $3::date ${purchaseBranch}
+        ), 0)
+        + COALESCE((
+          SELECT SUM(COALESCE(destination.amount, 0) - COALESCE(source.amount, 0))
+          FROM store_transfers st
+          INNER JOIN store_transfer_lines stl ON stl."transferId" = st.id AND stl."deletedAt" IS NULL
+          LEFT JOIN inventory_transactions source
+            ON source."refType" = 'transfer' AND source."refId" = st.id
+           AND source."storeId" = st."fromStoreId" AND source.type = 'out'
+           AND source."productId" = stl."productId"
+           AND source."deletedAt" IS NULL
+          LEFT JOIN inventory_transactions destination
+            ON destination."refType" = 'transfer' AND destination."refId" = st.id
+           AND destination."storeId" = st."toStoreId" AND destination.type = 'in'
+           AND destination."productId" = stl."productId"
+           AND destination."deletedAt" IS NULL
+          WHERE st."deletedAt" IS NULL AND st.status = 'imported'
+            AND source.id IS NOT NULL AND destination.id IS NOT NULL
+            AND timezone($1, st."importedAt")::date >= $2::date
+            AND timezone($1, st."importedAt")::date < $3::date ${transferBranch}
+        ), 0)::float AS "costDifference"`,
+      params,
+    );
+    return numeric(rows[0]?.costDifference);
+  }
+
+  async getCostDifferenceByBranch(
+    scope: AnalysisScope,
+    range: AnalysisRange,
+  ): Promise<AnalysisBranchValue[]> {
+    const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
+    const priceBranch = this.scope("it", scope, params);
+    const purchaseBranch = this.scope("o", scope, params);
+    let transferBranch = "";
+    if (Array.isArray(scope.storeIds)) {
+      if (!scope.storeIds.length) transferBranch = " AND 1 = 0";
+      else {
+        params.push(scope.storeIds);
+        transferBranch = ` AND (st."fromStoreId" = ANY($${params.length}::uuid[]) OR st."toStoreId" = ANY($${params.length}::uuid[]))`;
+      }
+    } else if (scope.branch !== "all") {
+      params.push(scope.branch);
+      transferBranch = ` AND (st."fromStoreId" = $${params.length} OR st."toStoreId" = $${params.length})`;
+    }
+    const rows = await DatabaseConfig.query(
+      `SELECT branch, SUM(value)::float AS value
+       FROM (
+         SELECT COALESCE(s.name, 'Khong xac dinh') AS branch,
+           SUM(CASE WHEN it.type = 'in' THEN ABS(it.amount) ELSE -ABS(it.amount) END)::float AS value
+         FROM inventory_transactions it
+         LEFT JOIN stores s ON s.id = it."storeId"
+         WHERE it."deletedAt" IS NULL AND it."refType" = 'product_price_update'
+           AND timezone($1, it."occurredAt")::date >= $2::date
+           AND timezone($1, it."occurredAt")::date < $3::date ${priceBranch}
+         GROUP BY s.name
+         UNION ALL
+         SELECT COALESCE(s.name, 'Khong xac dinh') AS branch,
+           SUM(COALESCE(o."totalAmount", 0) - COALESCE(o."totalCost", 0))::float AS value
+         FROM orders o
+         LEFT JOIN stores s ON s.id = o."storeId"
+         WHERE o."deletedAt" IS NULL AND o.status = 'completed' AND o.type = 'purchase_return'
+           AND timezone($1, COALESCE(o."occurredAt", o."orderAt"))::date >= $2::date
+           AND timezone($1, COALESCE(o."occurredAt", o."orderAt"))::date < $3::date ${purchaseBranch}
+         GROUP BY s.name
+         UNION ALL
+         SELECT 'Toan he thong' AS branch,
+           SUM(COALESCE(destination.amount, 0) - COALESCE(source.amount, 0))::float AS value
+         FROM store_transfers st
+         INNER JOIN store_transfer_lines stl ON stl."transferId" = st.id AND stl."deletedAt" IS NULL
+         LEFT JOIN inventory_transactions source
+           ON source."refType" = 'transfer' AND source."refId" = st.id
+          AND source."storeId" = st."fromStoreId" AND source.type = 'out'
+          AND source."productId" = stl."productId"
+          AND source."deletedAt" IS NULL
+         LEFT JOIN inventory_transactions destination
+           ON destination."refType" = 'transfer' AND destination."refId" = st.id
+          AND destination."storeId" = st."toStoreId" AND destination.type = 'in'
+          AND destination."productId" = stl."productId"
+          AND destination."deletedAt" IS NULL
+         WHERE st."deletedAt" IS NULL AND st.status = 'imported'
+           AND source.id IS NOT NULL AND destination.id IS NOT NULL
+           AND timezone($1, st."importedAt")::date >= $2::date
+           AND timezone($1, st."importedAt")::date < $3::date ${transferBranch}
+       ) cost_difference_rows
+       GROUP BY branch
+       HAVING SUM(value) <> 0`,
+      params,
+    );
+    return rows.map((row: any) => ({
+      branch: row.branch,
+      value: numeric(row.value),
+    }));
+  }
+
   async getAdjustmentsByBranch(scope: AnalysisScope, range: AnalysisRange): Promise<AnalysisBranchValue[]> {
     const params: unknown[] = [scope.timezone, range.startAt, range.endExclusive];
     const inventoryBranch = this.scope("ia", scope, params);

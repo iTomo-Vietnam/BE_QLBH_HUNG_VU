@@ -117,21 +117,23 @@ export class AnalysisService {
     const range = resolveAnalysisRange(query.period);
     const previous = resolvePreviousRange(range);
     const scope = this.scope(branch, query);
-    const [summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, shipping, previousShipping] = await Promise.all([
+    const [summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, costDifference, previousCostDifference, shipping, previousShipping] = await Promise.all([
       this.repository.getSummary(scope, range),
       this.repository.getSummary(scope, previous),
       this.repository.getProfitComponents(scope, range),
       this.repository.getProfitComponents(scope, previous),
       this.repository.getAdjustments(scope, range),
       this.repository.getAdjustments(scope, previous),
+      this.repository.getCostDifference(scope, range),
+      this.repository.getCostDifference(scope, previous),
       this.repository.getFreeShippingAndInternalExport(scope, range),
       this.repository.getFreeShippingAndInternalExport(scope, previous),
     ]);
-    return { range, previous, scope, summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, shipping, previousShipping };
+    return { range, previous, scope, summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, costDifference, previousCostDifference, shipping, previousShipping };
   }
 
   private profitMetricData(parts: Awaited<ReturnType<AnalysisService["getProfitParts"]>>) {
-    const { range, summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, shipping, previousShipping } = parts;
+    const { range, summary, previousSummary, components, previousComponents, adjustments, previousAdjustments, costDifference, previousCostDifference, shipping, previousShipping } = parts;
     const netRevenue = numeric(summary.revenue) - numeric(summary.returns);
     const previousNetRevenue = numeric(previousSummary.revenue) - numeric(previousSummary.returns);
     const otherCost = numeric(components.otherCost);
@@ -140,8 +142,8 @@ export class AnalysisService {
     const previousOtherIncome = numeric(previousComponents.otherIncome);
     const adjustment = numeric(adjustments.inventory) + numeric(adjustments.fund) + numeric(adjustments.vat) + numeric(adjustments.debt);
     const previousAdjustment = numeric(previousAdjustments.inventory) + numeric(previousAdjustments.fund) + numeric(previousAdjustments.vat) + numeric(previousAdjustments.debt);
-    const netProfit = numeric(summary.grossProfit) - shipping - otherCost + otherIncome + adjustment;
-    const previousNetProfit = numeric(previousSummary.grossProfit) - numeric(previousShipping) - previousOtherCost + previousOtherIncome + previousAdjustment;
+    const netProfit = numeric(summary.grossProfit) - shipping - otherCost + otherIncome + adjustment + costDifference;
+    const previousNetProfit = numeric(previousSummary.grossProfit) - numeric(previousShipping) - previousOtherCost + previousOtherIncome + previousAdjustment + previousCostDifference;
     const metric = (value: number, previousValue: number) => this.metric(value, previousValue, range.days);
 
     return {
@@ -191,10 +193,11 @@ export class AnalysisService {
   async getSaleProfitEffectiveness(branch: string | string[], query: AnalysisQuery) {
     const range = resolveAnalysisRange(query.period);
     const scope = this.scope(branch, query);
-    const [summary, componentsByBranch, adjustmentsByBranch, shippingByBranch, branches, costs] = await Promise.all([
+    const [summary, componentsByBranch, adjustmentsByBranch, costDifferenceByBranch, shippingByBranch, branches, costs] = await Promise.all([
       this.repository.getSummary(scope, range),
       this.repository.getProfitComponentsByBranch(scope, range),
       this.repository.getAdjustmentsByBranch(scope, range),
+      this.repository.getCostDifferenceByBranch(scope, range),
       this.repository.getFreeShippingAndInternalExportByBranch(scope, range),
       this.repository.getBranches(scope, range),
       this.repository.getCostStructure(scope, range),
@@ -204,13 +207,15 @@ export class AnalysisService {
     const otherCost = componentsByBranch.reduce((sum, item) => sum + numeric(item.otherCost), 0);
     const otherIncome = componentsByBranch.reduce((sum, item) => sum + numeric(item.otherIncome), 0);
     const adjustment = adjustmentsByBranch.reduce((sum, item) => sum + numeric(item.value), 0);
+    const costDifference = costDifferenceByBranch.reduce((sum, item) => sum + numeric(item.value), 0);
     const shipping = shippingByBranch.reduce((sum, item) => sum + numeric(item.value), 0);
-    const netProfit = numeric(summary.grossProfit) - shipping - otherCost + otherIncome + adjustment;
+    const netProfit = numeric(summary.grossProfit) - shipping - otherCost + otherIncome + adjustment + costDifference;
     const branchNames = Array.from(new Set([
       ...branches.map((item) => item.branch),
       ...costs.map((item) => item.branch),
       ...componentsByBranch.map((item) => item.branch),
       ...adjustmentsByBranch.map((item) => item.branch),
+      ...costDifferenceByBranch.map((item) => item.branch),
       ...shippingByBranch.map((item) => item.branch),
     ]));
     const branchData = (key: string) => {
@@ -219,6 +224,7 @@ export class AnalysisService {
         const sales = branches.find((item) => item.branch === branchName);
         const component = componentsByBranch.find((item) => item.branch === branchName);
         const adjustmentValue = adjustmentsByBranch.find((item) => item.branch === branchName)?.value || 0;
+        const costDifferenceValue = costDifferenceByBranch.find((item) => item.branch === branchName)?.value || 0;
         const shippingValue = shippingByBranch.find((item) => item.branch === branchName)?.value || 0;
         const otherCostValue = costs
           .filter((cost) => cost.branch === branchName)
@@ -233,7 +239,8 @@ export class AnalysisService {
           : key === "otherCost" ? numeric(component?.otherCost ?? otherCostValue)
           : key === "otherIncome" ? numeric(component?.otherIncome)
           : key === "adjustment" ? numeric(adjustmentValue)
-          : key === "netProfit" ? grossProfit - numeric(shippingValue) - numeric(component?.otherCost ?? otherCostValue) + numeric(component?.otherIncome) + numeric(adjustmentValue)
+          : key === "costDifference" ? numeric(costDifferenceValue)
+          : key === "netProfit" ? grossProfit - numeric(shippingValue) - numeric(component?.otherCost ?? otherCostValue) + numeric(component?.otherIncome) + numeric(adjustmentValue) + numeric(costDifferenceValue)
           : 0;
         return { branch: branchName, value };
       });
@@ -248,6 +255,7 @@ export class AnalysisService {
       ["otherCost", "Chi phí khác", otherCost],
       ["otherIncome", "Thu nhập khác", otherIncome],
       ["adjustment", "Điều chỉnh", adjustment],
+      ["costDifference", "Chênh lệch giá vốn", costDifference],
       ["netProfit", "Lợi nhuận ròng", netProfit],
     ].map(([key, name, total]) => ({
       key: String(key),

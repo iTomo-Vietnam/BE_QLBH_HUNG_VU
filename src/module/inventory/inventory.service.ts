@@ -15,7 +15,6 @@ import { INVENTORY_TYPES } from "./inventory.types";
 import { PRODUCT_TYPES } from "../product/product.types";
 import { ProductRepository } from "../product/product.repository";
 import { InventoryRepository } from "./inventory.repository";
-import { StoreTransfer } from "@/database/models/StoreTransfer";
 
 type InventoryTransactionDetail = Omit<InventoryTransaction, "isDeleted"> & {
   closingQuantity: number;
@@ -174,32 +173,6 @@ export class InventoryService extends TransactionService {
       order: { occurredAt: "ASC", createdAt: "ASC", id: "ASC" } as any,
     });
 
-    const internalTransferIds = new Set<string>();
-    if (!params.storeId) {
-      const transferIds = [
-        ...new Set(
-          rows
-            .filter((tx) => tx.refType === InventoryRefType.TRANSFER)
-            .map((tx) => tx.refId),
-        ),
-      ];
-      if (transferIds.length) {
-        const transfers = await manager.getRepository(StoreTransfer).find({
-          where: { id: In(transferIds), deletedAt: IsNull() } as any,
-          select: { id: true, fromStoreId: true, toStoreId: true } as any,
-        });
-        transfers.forEach((transfer) => {
-          if (
-            transfer.fromStoreId &&
-            transfer.toStoreId &&
-            transfer.fromStoreId !== transfer.toStoreId
-          ) {
-            internalTransferIds.add(transfer.id);
-          }
-        });
-      }
-    }
-
     type Balance = { quantity: number; amount: number };
     const balances = new Map<string, Balance>();
     const getBalance = (storeId: string): Balance => {
@@ -238,16 +211,9 @@ export class InventoryService extends TransactionService {
           : getTotalBalance();
       }
 
-      // Chuyển kho nội bộ không làm thay đổi tồn toàn hệ thống. Khi xem
-      // riêng một cửa hàng, giao dịch nhập/xuất vẫn được giữ lại.
-      if (
-        !params.storeId &&
-        tx.refType === InventoryRefType.TRANSFER &&
-        internalTransferIds.has(tx.refId)
-      ) {
-        continue;
-      }
-
+      // Giữ cả giao dịch chuyển kho trong báo cáo tổng hệ thống để người dùng
+      // theo dõi đầy đủ các mốc xuất/nhập; khi xem riêng chi nhánh vẫn lọc theo
+      // storeId như bình thường.
       const balance = getBalance(tx.storeId);
       const quantity = Math.abs(Number(tx.quantity) || 0);
       const amount = Math.abs(Number(tx.amount) || 0);

@@ -1,5 +1,5 @@
 import { inject, injectable } from "inversify";
-import { DeepPartial, EntityManager } from "typeorm";
+import { DeepPartial, EntityManager, In, IsNull, LessThan } from "typeorm";
 import { withTransaction } from "@/shared/base/TransactionManager";
 import { BaseService } from "@/shared/base/BaseService";
 import { ActionValue, RequestContext } from "@/shared/types/interfaces";
@@ -18,6 +18,8 @@ import {
   PartnerType,
   Product,
 } from "@/database/models";
+import { ProductPriceHistory } from "@/database/models/store/ProductPriceHistory";
+import { StoreProduct } from "@/database/models/store/StoreProduct";
 import { OrderRepository } from "./order.repository";
 import { ORDER_TYPES } from "./order.types";
 import { OrderLineRepository } from "./orderLine.repository";
@@ -41,6 +43,8 @@ import { NotificationService } from "@/module/notification/notification.service"
 import { ActionType, NotificationType } from "@/database/models/Notification";
 import { TRANSFER_NOTE_TYPES } from "@/module/transferNote/transferNote.types";
 import { TransferNoteService } from "@/module/transferNote/transferNote.service";
+import { PRODUCT_PRICE_HISTORY_TYPES } from "@/module/productPriceHistory/productPriceHistory.types";
+import { ProductPriceHistoryRepository } from "@/module/productPriceHistory/productPriceHistory.repository";
 
 const calculateRateAmount = (
   baseAmount: number,
@@ -110,6 +114,8 @@ export class OrderService extends BaseService<Order> {
     private notificationService: NotificationService,
     @inject(TRANSFER_NOTE_TYPES.Service)
     private transferNoteService: TransferNoteService,
+    @inject(PRODUCT_PRICE_HISTORY_TYPES.Repository)
+    private priceHistoryRepository: ProductPriceHistoryRepository,
   ) {
     super();
     this.repository = repository;
@@ -743,6 +749,75 @@ export class OrderService extends BaseService<Order> {
     }
   }
 
+  /**
+   * Purchase cost is the supplier unit price converted to the base unit. If it
+   * differs from the store cost at the time of importing, create a value-only
+   * price event before replaying the purchase movement. These rows are linked
+   * to OrderLine so replacing/canceling a purchase can remove them safely.
+   */
+  private async syncPurchasePriceHistories(
+    data: Order,
+    previous: Order | undefined,
+    manager: EntityManager,
+  ): Promise<void> {
+    const priceRepository = this.priceHistoryRepository.getRepository(manager);
+    const lineIds = [...(previous?.lines || []), ...(data.lines || [])]
+      .map((line) => line.id)
+      .filter((id): id is string => Boolean(id));
+    if (lineIds.length) {
+      await priceRepository.delete({ purchaseLineId: In(lineIds) } as any);
+    }
+    if (
+      data.type !== OrderType.PURCHASE ||
+      data.status !== OrderStatus.COMPLETED
+    )
+      return;
+
+    const occurredAt = data.occurredAt || data.orderAt || new Date();
+    const storeProductRepository = manager.getRepository(StoreProduct);
+    for (const line of data.lines || []) {
+      if (!line.id || !line.productId) continue;
+      const conversionRate = Number(line.conversionRateAtTime) || 1;
+      const purchaseCost = (Number(line.unitPrice) || 0) / conversionRate;
+      const historyBefore = await priceRepository.findOne({
+        where: {
+          productId: line.productId,
+          storeId: data.storeId,
+          occurredAt: LessThan(occurredAt),
+          deletedAt: IsNull(),
+        } as any,
+        order: { occurredAt: "DESC", createdAt: "DESC", id: "DESC" } as any,
+      });
+      const storeProduct = await storeProductRepository.findOne({
+        where: { productId: line.productId, storeId: data.storeId } as any,
+      });
+      const costBefore =
+        Number(historyBefore?.costPrice ?? storeProduct?.costPrice) || 0;
+      if (Math.abs(purchaseCost - costBefore) < 0.000001) continue;
+
+      const productSnapshot = await this.productRepository.getSnapshot(
+        line.productId,
+        manager,
+      );
+      if (!productSnapshot) continue;
+      await priceRepository.save(
+        priceRepository.create({
+          storeId: data.storeId,
+          productId: line.productId,
+          purchaseLineId: line.id,
+          productSnapshot,
+          code: await generateCode("pricehistory", data.storeId),
+          occurredAt,
+          creatorId: data.completerId || data.creatorId || null,
+          creatorSnapshot:
+            data.completerSnapshot || data.creatorSnapshot || null,
+          costPrice: purchaseCost,
+          deltaCostPrice: purchaseCost - costBefore,
+        } as DeepPartial<ProductPriceHistory>),
+      );
+    }
+  }
+
   async actionAfterCreate(
     data: Order,
     manager: EntityManager,
@@ -765,6 +840,7 @@ export class OrderService extends BaseService<Order> {
     }
     await this.debtService.syncForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, data.status, manager);
+    await this.syncPurchasePriceHistories(data, undefined, manager);
     await this.recalculate(data, manager);
     await this.transferNoteService.revalidateByReferenceCode(
       data.storeId,
@@ -831,6 +907,7 @@ export class OrderService extends BaseService<Order> {
     const previous = (inputData as any)?.__previousOrder as Order | undefined;
     await this.debtService.syncForOrder(data, manager);
     await this.syncOrderIncomeExpenses(data.id, data.status, manager);
+    await this.syncPurchasePriceHistories(data, previous, manager);
     await this.recalculate(data, manager, previous);
     await this.transferNoteService.revalidateByReferenceCode(
       data.storeId,

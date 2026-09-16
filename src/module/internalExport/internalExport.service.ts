@@ -61,35 +61,12 @@ export class InternalExportService extends BaseService<InternalExport> {
     }
   }
 
-  private async validateInventory(
-    lines: any[],
-    storeId: string,
-    occurredAt: Date,
-    manager: EntityManager,
-    excludedRefId?: string,
-  ): Promise<void> {
-    const quantities = new Map<string, number>();
+  private validateDuplicateProducts(lines: any[]): void {
     const productIds = new Set<string>();
     for (const line of lines) {
       if (productIds.has(line.productId))
         throw new Error("internal.export.line.duplicate_product");
       productIds.add(line.productId);
-      const quantity =
-        (Number(line.quantity) || 0) * (Number(line.conversionRateAtTime) || 1);
-      quantities.set(
-        line.productId,
-        (quantities.get(line.productId) || 0) + quantity,
-      );
-    }
-    for (const [productId, quantity] of quantities) {
-      await this.inventory.assertAvailable(
-        productId,
-        storeId,
-        quantity,
-        occurredAt,
-        manager,
-        excludedRefId,
-      );
     }
   }
 
@@ -184,12 +161,8 @@ export class InternalExportService extends BaseService<InternalExport> {
     if (!Array.isArray((data as any).lines) || !(data as any).lines.length)
       throw new Error("internal.export.lines.required");
     await this.prepareLines((data as any).lines, manager);
-    await this.validateInventory(
-      (data as any).lines,
-      data.storeId,
-      data.occurredAt as Date,
-      manager,
-    );
+    // Hệ thống cho phép tồn âm; chỉ kiểm tra trùng sản phẩm trong một phiếu.
+    this.validateDuplicateProducts((data as any).lines);
   }
 
   async update(
@@ -216,7 +189,6 @@ export class InternalExportService extends BaseService<InternalExport> {
         throw new BadRequestError(
           "Không thể chuyển dữ liệu sang cửa hàng khác",
         );
-      const storeId = (payload.storeId || current.storeId) as string;
       if (
         payload.type !== undefined &&
         !Object.values(InternalExportType).includes(
@@ -224,11 +196,11 @@ export class InternalExportService extends BaseService<InternalExport> {
         )
       )
         throw new Error("internal.export.type.invalid");
-      const occurredAt = new Date(payload.occurredAt || current.occurredAt);
       if (Array.isArray(lines)) {
         if (!lines.length) throw new Error("internal.export.lines.required");
         await this.prepareLines(lines, em);
-        await this.validateInventory(lines, storeId, occurredAt, em, id);
+        // Hệ thống cho phép tồn âm; không chặn theo số dư hiện tại.
+        this.validateDuplicateProducts(lines);
       }
       const updated = await super.update(id, payload, em, req);
       if (!updated || !Array.isArray(lines)) return updated;

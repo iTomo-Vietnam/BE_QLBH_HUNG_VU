@@ -2,7 +2,16 @@ import { Cron } from "croner";
 import { In, IsNull, LessThanOrEqual } from "typeorm";
 import DatabaseConfig from "@/config/database";
 import { container } from "@/config/container";
-import { Store, Order, OrderStatus, OrderType, IncomeExpense, IncomeExpenseStatus } from "@/database/models";
+import {
+  Store,
+  Order,
+  OrderStatus,
+  OrderType,
+  IncomeExpense,
+  IncomeExpenseStatus,
+  StoreTransfer,
+} from "@/database/models";
+import { StoreTransferStatus } from "@/database/models/StoreTransfer";
 import { ORDER_TYPES } from "@/module/order/order.types";
 import { OrderService } from "@/module/order/order.service";
 import { INCOME_EXPENSE_TYPES } from "@/module/incomeExpense/incomeExpense.types";
@@ -85,7 +94,52 @@ const getCountText = (counts: Partial<Record<OrderType | "incomeExpense", number
 const getRepositories = () => ({
   order: DatabaseConfig.getRepository(Order),
   incomeExpense: DatabaseConfig.getRepository(IncomeExpense),
+  transfer: DatabaseConfig.getRepository(StoreTransfer),
 });
+
+async function notifyPendingTransfers(
+  store: Store,
+  date: string,
+  endInstant: Date,
+): Promise<void> {
+  const { transfer } = getRepositories();
+  const pending = await transfer.find({
+    where: {
+      toStoreId: store.id,
+      status: StoreTransferStatus.EXPORTED,
+      importedAt: null,
+      exportedAt: LessThanOrEqual(endInstant),
+      deletedAt: IsNull(),
+    } as any,
+  });
+  if (!pending.length) return;
+
+  const notificationService = container.get<NotificationService>(
+    NOTIFICATION_TYPES.NotificationService,
+  );
+  const recipientIds = await notificationService.findUsersWithPermission(
+    store.id,
+    "storeTransfer",
+    "complete",
+  );
+  if (!recipientIds.length) return;
+
+  const codes = pending.map((item) => item.code).filter(Boolean);
+  await notificationService.createNotificationByEntityOnce(
+    {
+      id: store.id,
+      entityType: "Store",
+      storeId: store.id,
+      transferIds: pending.map((item) => item.id),
+      transferCodes: codes,
+      message: `Cửa hàng ${store.name} còn ${pending.length} phiếu chuyển hàng đã xuất nhưng chưa nhập kho: ${codes.join(", ")}`,
+    },
+    NotificationType.STORE_TRANSFER,
+    ActionType.REMINDER,
+    recipientIds,
+    `unfinished-transfer:${store.id}:${date}`,
+  );
+}
 
 async function notifyUnfinished(store: Store, date: string, counts: Partial<Record<OrderType | "incomeExpense", number>>): Promise<void> {
   const notificationService = container.get<NotificationService>(NOTIFICATION_TYPES.NotificationService);
@@ -155,6 +209,10 @@ async function processStore(store: Store, now: Date): Promise<void> {
   }, { incomeExpense: draftIncomeExpenses });
 
   const elapsed = wallNow.value - endAt;
+  if (elapsed >= 0) {
+    // Chỉ nhắc cửa hàng nhận. Phiếu chuyển kho không bị tự hủy ở job này.
+    await notifyPendingTransfers(store, endDate, endInstant);
+  }
   if (elapsed >= 0 && elapsed < 60 * 60 * 1000 && getCountText(counts)) {
     await notifyUnfinished(store, endDate, counts);
     return;

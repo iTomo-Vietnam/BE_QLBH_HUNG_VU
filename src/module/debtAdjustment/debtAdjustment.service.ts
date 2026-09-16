@@ -151,7 +151,7 @@ export class DebtAdjustmentService extends BaseService<DebtAdjustment> {
         if (row.side === DebtSide.PAYABLE) totals.totalPayable += value;
         return {
           id: row.partnerGroupId || nullUuidMap.partnerGroup,
-          name: row.partnerGroupName || "Không xác định",
+          name: row.partnerGroupName || "Nhóm chưa xác định",
           type:
             row.side === DebtSide.RECEIVABLE
               ? AttributeType.CUSTOMER_GROUP
